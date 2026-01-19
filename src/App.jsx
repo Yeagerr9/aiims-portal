@@ -139,6 +139,7 @@ const App = () => {
     const qEmpReal = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings'));
     const unsubEmp = onSnapshot(qEmpReal, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort numerically by SrNo if possible
       data.sort((a, b) => (parseInt(a.srNo) || 999999) - (parseInt(b.srNo) || 999999));
       setEmployees(data);
       setLoading(false);
@@ -241,11 +242,11 @@ const App = () => {
       } catch (err) { console.error(err); alert("Move failed."); }
   };
 
-  // --- EXCEL IMPORT/EXPORT ---
+  // --- EXCEL IMPORT/EXPORT (RESTORED & FIXED) ---
   const handleExportCSV = () => {
-      const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Mobile", "Status", "Undertaking Received"];
+      const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Mobile", "Status", "Undertaking Received", "Notification Sent"];
       const csv = [headers.join(","), ...employees.map(e => 
-        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No"].join(",")
+        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No", e.notificationSent ? "Yes" : "No"].join(",")
       )].join("\n");
       const link = document.createElement("a");
       link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -269,34 +270,80 @@ const App = () => {
 
         const batch = writeBatch(db);
         let count = 0;
+        
+        // Smart Header Detection
         const headers = jsonData[0].map(h => h?.toString().toLowerCase().trim() || '');
         const emailIdx = headers.findIndex(h => h.includes('email'));
         
+        // Detect Status Columns in Excel
+        // If these columns exist in the file, we will update them. 
+        // If not, we will PRESERVE the existing database value.
+        let notifIdx = headers.findIndex(h => h.includes('notification') || h.includes('sent') || h.includes('notified'));
+        let underIdx = headers.findIndex(h => h.includes('undertaking') || h.includes('received') || h.includes('compliance'));
+        let deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept'));
+        let mobileIdx = headers.findIndex(h => h.includes('mobile') || h.includes('phone'));
+
+        // Helper to check for "Yes" or "True" values
+        const isTrue = (val) => {
+            if (!val) return false;
+            const s = val.toString().toLowerCase().trim();
+            return s === 'yes' || s === 'true' || s === 'done' || s === 'sent' || s === 'received';
+        };
+
+        // Create a Map of existing users for O(1) lookup
+        const existingUsers = new Map(employees.map(e => [e.email.toLowerCase(), e]));
+
         jsonData.forEach((row, index) => {
            if (index === 0) return; 
            const email = row[emailIdx > -1 ? emailIdx : 3]?.toString().trim();
 
            if (email && email.includes('@')) {
               const docRef = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', email);
+              const existing = existingUsers.get(email.toLowerCase());
+
+              // MERGE LOGIC: New Value OR Old Value (Don't overwrite true with false unless explicit)
+              
+              // 1. Notification Status
+              // If excel has the column, use it. If not, keep old.
+              // If excel says "Yes", force true. If excel is empty/no column, keep old.
+              let newNotified = existing?.notificationSent || false;
+              if (notifIdx > -1) {
+                  if (isTrue(row[notifIdx])) newNotified = true;
+              }
+
+              // 2. Undertaking Status
+              let newUndertaking = existing?.undertakingReceived || false;
+              if (underIdx > -1) {
+                  if (isTrue(row[underIdx])) newUndertaking = true;
+              }
+
+              // 3. Department (Update if provided in Excel, else keep old)
+              let newDept = existing?.department || 'Unassigned';
+              if (deptIdx > -1 && row[deptIdx]) newDept = row[deptIdx];
+
               batch.set(docRef, {
-                  srNo: row[0] || '',
-                  firstName: row[1] || '',
-                  lastName: row[2] || '',
+                  srNo: row[0] || existing?.srNo || '',
+                  firstName: row[1] || existing?.firstName || '',
+                  lastName: row[2] || existing?.lastName || '',
                   email: email,
-                  department: row[4] || 'Unassigned',
-                  mobile: row[5] || '',
-                  status: 'Pending',
-                  undertakingReceived: false,
-                  notificationSent: false,
+                  department: newDept,
+                  mobile: (mobileIdx > -1 && row[mobileIdx]) ? row[mobileIdx] : (existing?.mobile || ''),
+                  
+                  // Key Merge Logic:
+                  notificationSent: newNotified,
+                  undertakingReceived: newUndertaking,
+                  status: newUndertaking ? 'Accepted' : (newNotified ? 'Notified' : 'Pending'),
+                  
                   updatedAt: new Date().toISOString()
               }, { merge: true });
+              
               count++;
            }
         });
 
         await batch.commit();
-        await logAction("Bulk Import", `Imported ${count} records via Excel`, 'info');
-        alert(`Successfully imported ${count} records!`);
+        await logAction("Bulk Import", `Merged ${count} records from Excel`, 'info');
+        alert(`Success! Merged/Updated ${count} records.\n\nNote: Existing "Received" or "Notified" statuses were preserved unless updated by the file.`);
         setIsImportModalOpen(false);
       } catch (err) { alert("Import failed. Check file format."); console.error(err); }
     };
@@ -362,7 +409,7 @@ const App = () => {
     const pending = employees.filter(e => !e.undertakingReceived).length;
     const notified = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
     
-    const deptMap = { 'Unassigned': { name: 'Unassigned', total: 0, compliant: 0, employees: [] } };
+    const deptMap = {};
     employees.forEach(emp => {
         let d = (emp.department || 'Unassigned').trim();
         if(!d) d = 'Unassigned';
@@ -370,7 +417,6 @@ const App = () => {
         deptMap[d].total++;
         if (emp.undertakingReceived) deptMap[d].compliant++;
     });
-    if(deptMap['Unassigned'].total === 0) delete deptMap['Unassigned'];
     return { 
         total, accepted, pending, notified,
         percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, 
