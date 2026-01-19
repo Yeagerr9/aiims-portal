@@ -23,12 +23,11 @@ import {
 } from 'firebase/firestore';
 import { 
   Users, CheckCircle2, Plus, Search, 
-  Download, Building2, 
-  ShieldCheck, Activity, Moon, Sun, 
-  UploadCloud, AlertTriangle, ChevronLeft, 
+  UploadCloud, FileText, AlertTriangle, ChevronLeft, 
   ChevronRight, Phone, UserCircle, ChevronDown, ChevronUp, 
   LayoutDashboard, History, Bell, Menu, TrendingUp, Clock, Settings, Eye, Lock,
-  FolderPlus, ArrowLeft, Mail, Filter
+  FolderPlus, ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Download, Building2,
+  Moon, Sun  // <--- FIXED: These were missing!
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -46,17 +45,28 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'aiims-default'; 
 
+// --- Safety Helper Functions ---
+const formatDate = (isoString) => {
+    if (!isoString) return 'N/A';
+    try {
+        const d = new Date(isoString);
+        return isNaN(d.getTime()) ? 'Invalid Date' : d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    } catch (e) {
+        return 'Date Error';
+    }
+};
+
 const App = () => {
   const [user, setUser] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [deptMetadata, setDeptMetadata] = useState({});
+  const [deptMetadata, setDeptMetadata] = useState({}); 
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [darkMode, setDarkMode] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedDepartment, setSelectedDepartment] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState(null); 
   
   // Admin Features
   const [viewOnlyMode, setViewOnlyMode] = useState(false);
@@ -74,8 +84,8 @@ const App = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-  const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false);
-  const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false);
+  const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false); 
+  const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false); 
   const [editingId, setEditingId] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -85,6 +95,7 @@ const App = () => {
     department: '', responsibleOfficer: '', sentDate: '', receivedDate: ''
   });
 
+  // Department Management State
   const [deptFormData, setDeptFormData] = useState({ name: '', selectedEmps: [] });
   const [deptMetaForm, setDeptMetaForm] = useState({ hodName: '', hodEmail: '', hodPhone: '' });
   const [deptSearchTerm, setDeptSearchTerm] = useState(''); 
@@ -93,7 +104,7 @@ const App = () => {
 
   // --- Init ---
   useEffect(() => {
-    signInAnonymously(auth).catch(err => console.error(err));
+    signInAnonymously(auth).catch(err => console.error("Auth Error:", err));
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
@@ -101,14 +112,24 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
     
+    // Fetch Employees
     const qEmp = query(collection(db, 'artifacts', appId, 'users', user.uid, 'undertakings'));
     const unsubEmp = onSnapshot(qEmp, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a, b) => (Number(a.srNo) || 9999) - (Number(b.srNo) || 9999));
+      // Robust sorting that handles missing SrNo
+      data.sort((a, b) => {
+          const valA = parseInt(a.srNo) || 999999;
+          const valB = parseInt(b.srNo) || 999999;
+          return valA - valB;
+      });
       setEmployees(data);
       setLoading(false);
+    }, (error) => {
+        console.error("Employee Fetch Error:", error);
+        setLoading(false);
     });
 
+    // Fetch Department Metadata
     const qDept = query(collection(db, 'artifacts', appId, 'users', user.uid, 'department_metadata'));
     const unsubDept = onSnapshot(qDept, (snapshot) => {
         const meta = {};
@@ -116,6 +137,7 @@ const App = () => {
         setDeptMetadata(meta);
     });
 
+    // Fetch Logs
     const qLogs = query(collection(db, 'artifacts', appId, 'users', user.uid, 'audit_logs'), orderBy('timestamp', 'desc'));
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -132,7 +154,7 @@ const App = () => {
           await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'audit_logs'), {
               action, details, type, timestamp: new Date().toISOString(), user: 'Admin'
           });
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error("Log Error:", err); }
   };
 
   const calculateStatus = (sent, received) => {
@@ -147,15 +169,12 @@ const App = () => {
     const notifiedOnly = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
     const pending = employees.filter(e => !e.notificationSent && !e.undertakingReceived).length;
     
-    // Percentages for Stacked Bar
-    const acceptedPct = total > 0 ? (accepted / total) * 100 : 0;
-    const notifiedPct = total > 0 ? (notifiedOnly / total) * 100 : 0;
-    
     const deptMap = { 'Unassigned': { name: 'Unassigned', total: 0, compliant: 0, pending: 0, employees: [] } };
     
     employees.forEach(emp => {
         let d = (emp.department || 'Unassigned').trim();
         if(d === '') d = 'Unassigned';
+        
         if (!deptMap[d]) deptMap[d] = { name: d, total: 0, compliant: 0, pending: 0, employees: [] };
         deptMap[d].total++;
         deptMap[d].employees.push(emp);
@@ -167,7 +186,7 @@ const App = () => {
 
     return {
       total, accepted, notifiedOnly, pending,
-      acceptedPct, notifiedPct,
+      percentage: total > 0 ? Math.round((accepted / total) * 100) : 0,
       departments: deptMap
     };
   }, [employees]);
@@ -181,7 +200,6 @@ const App = () => {
   const handleCreateDepartment = async () => {
       if(!user || viewOnlyMode) return;
       if(!deptFormData.name.trim()) return alert("Please enter a department name.");
-      if(deptFormData.selectedEmps.length === 0) return alert("Select at least one employee.");
       
       try {
           const batch = writeBatch(db);
@@ -189,8 +207,10 @@ const App = () => {
               const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'undertakings', empId);
               batch.update(ref, { department: deptFormData.name, updatedAt: new Date().toISOString() });
           });
+
           await batch.commit();
           await logAction("Department Created", `Created '${deptFormData.name}'`, 'success');
+          
           setIsDeptModalOpen(false);
           setDeptFormData({ name: '', selectedEmps: [] });
           setDeptSearchTerm('');
@@ -201,16 +221,18 @@ const App = () => {
       if(!user || viewOnlyMode || !selectedDepartment) return;
       try {
           await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'department_metadata', selectedDepartment), {
-              ...deptMetaForm, updatedAt: new Date().toISOString()
+              ...deptMetaForm,
+              updatedAt: new Date().toISOString()
           }, { merge: true });
           setIsDeptEditModalOpen(false);
-          await logAction("Dept Info Updated", `Updated ${selectedDepartment}`, 'info');
-      } catch (err) { console.error(err); alert("Failed to update info."); }
+          await logAction("Dept Info Updated", `Updated metadata for ${selectedDepartment}`, 'info');
+      } catch (err) { console.error(err); alert("Failed to update department info."); }
   };
 
   const handleMoveEmployees = async () => {
       if(!user || viewOnlyMode || !selectedDepartment) return;
       if(selectedMoveEmps.length === 0) return alert("Select at least one employee.");
+
       try {
           const batch = writeBatch(db);
           selectedMoveEmps.forEach(empId => {
@@ -218,7 +240,7 @@ const App = () => {
               batch.update(ref, { department: selectedDepartment, updatedAt: new Date().toISOString() });
           });
           await batch.commit();
-          await logAction("Staff Moved", `Moved ${selectedMoveEmps.length} to ${selectedDepartment}`, 'warning');
+          await logAction("Staff Moved", `Moved ${selectedMoveEmps.length} staff to ${selectedDepartment}`, 'warning');
           setIsMoveMemberModalOpen(false);
           setSelectedMoveEmps([]);
           setMoveSearchTerm('');
@@ -270,7 +292,7 @@ const App = () => {
   };
 
   const handleClearDatabase = async () => {
-    if (!user || viewOnlyMode || !window.confirm("⚠️ DANGER: Delete ALL records?")) return;
+    if (!user || viewOnlyMode || !window.confirm("⚠️ DANGER: This will delete ALL records. Confirm?")) return;
     const batch = writeBatch(db);
     employees.forEach(emp => batch.delete(doc(db, 'artifacts', appId, 'users', user.uid, 'undertakings', emp.id)));
     await batch.commit();
@@ -278,7 +300,7 @@ const App = () => {
     alert("Database cleared.");
   };
 
-  // --- ROBUST IMPORT LOGIC ---
+  // --- IMPORT LOGIC ---
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file || !user || viewOnlyMode) return;
@@ -297,29 +319,30 @@ const App = () => {
 
         const headers = jsonData[0].map(h => h?.toString().toLowerCase().trim() || '');
         const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('user ids'));
+        const deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept')); 
+        const srNoIdx = headers.findIndex(h => h.includes('sr') || h.includes('serial'));
         const firstIdx = headers.findIndex(h => h.includes('first'));
         const lastIdx = headers.findIndex(h => h.includes('last'));
         const mobileIdx = headers.findIndex(h => h.includes('mobile'));
         const contactIdx = headers.findIndex(h => h.includes('contact'));
-        const deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept')); 
-        const srNoIdx = headers.findIndex(h => h.includes('sr') || h.includes('serial'));
-        
-        // --- HARDENED COLUMN DETECTION ---
-        let undertakingIdx = headers.findIndex(h => h === 'column 1'); 
-        if (undertakingIdx === -1) undertakingIdx = headers.findIndex(h => h.includes('undertaking') || h.includes('received'));
 
-        // Look for "notification" OR Duplicate "mobile number" (index 6) for 'Email Sent' file
-        let notifiedIdx = headers.lastIndexOf('mobile number'); 
-        if (headers.findIndex(h => h.includes('notification') || h.includes('sent') || h.includes('done')) > -1) {
-             notifiedIdx = headers.findIndex(h => h.includes('notification') || h.includes('sent') || h.includes('done'));
+        let undertakingIdx = -1;
+        let notifiedIdx = -1;
+
+        // Smart Scan for Status Columns (First 10 rows)
+        for (let i = 1; i < Math.min(jsonData.length, 10); i++) {
+            const row = jsonData[i];
+            row.forEach((cell, idx) => {
+                const val = cell?.toString().toLowerCase().trim() || '';
+                if (undertakingIdx === -1 && (val === 'received' || val === 'submitted' || val === 'yes')) undertakingIdx = idx;
+                if (notifiedIdx === -1 && (val === 'done' || val === 'later' || val === 'verify' || val === 'sent')) notifiedIdx = idx;
+            });
         }
-        // Fallback for tricky files
-        if (notifiedIdx === -1 && headers.length >= 7) notifiedIdx = 6; 
 
         const isYes = (val) => {
             if (!val) return false;
             const s = val.toString().toLowerCase().trim();
-            return s === 'received' || s === 'yes' || s === 'true' || s === '1' || s === 'done';
+            return s === 'received' || s === 'yes' || s === 'true' || s === 'done';
         };
 
         const existingMap = new Map(employees.map(emp => [emp.email.toLowerCase(), emp]));
@@ -333,18 +356,10 @@ const App = () => {
               const existingUser = existingMap.get(email.toLowerCase());
               const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'undertakings', email);
 
-              let fileUndertaking = false;
-              if (undertakingIdx > -1) fileUndertaking = isYes(row[undertakingIdx]);
-              else fileUndertaking = row.some(cell => isYes(cell));
+              let fileUndertaking = (undertakingIdx > -1) ? isYes(row[undertakingIdx]) : (existingUser?.undertakingReceived || false);
+              let fileNotified = (notifiedIdx > -1) ? isYes(row[notifiedIdx]) : (existingUser?.notificationSent || false);
 
-              let fileNotified = false;
-              if (notifiedIdx > -1) fileNotified = isYes(row[notifiedIdx]);
-              else if (row.length > 6) fileNotified = isYes(row[row.length - 1]); // Last col fallback
-
-              const finalUndertaking = existingUser ? (existingUser.undertakingReceived || fileUndertaking) : fileUndertaking;
-              const finalNotified = existingUser ? (existingUser.notificationSent || fileNotified) : fileNotified;
-              const finalStatus = calculateStatus(finalNotified, finalUndertaking);
-
+              const finalStatus = calculateStatus(fileNotified, fileUndertaking);
               const fileDept = row[deptIdx > -1 ? deptIdx : 99];
               const finalDept = fileDept || existingUser?.department || '';
 
@@ -357,12 +372,12 @@ const App = () => {
                   mobile: row[mobileIdx > -1 ? mobileIdx : 5] || existingUser?.mobile || '',
                   department: finalDept,
                   status: finalStatus,
-                  undertakingReceived: finalUndertaking,
-                  notificationSent: finalNotified,
+                  undertakingReceived: fileUndertaking,
+                  notificationSent: fileNotified,
                   updatedAt: new Date().toISOString(),
                   type: 'Individual',
-                  sentDate: (finalNotified && !existingUser?.sentDate) ? new Date().toISOString().split('T')[0] : (existingUser?.sentDate || ''),
-                  receivedDate: (finalUndertaking && !existingUser?.receivedDate) ? new Date().toISOString().split('T')[0] : (existingUser?.receivedDate || '')
+                  sentDate: (fileNotified && !existingUser?.sentDate) ? new Date().toISOString().split('T')[0] : (existingUser?.sentDate || ''),
+                  receivedDate: (fileUndertaking && !existingUser?.receivedDate) ? new Date().toISOString().split('T')[0] : (existingUser?.receivedDate || '')
               };
 
               batch.set(docRef, newData, { merge: true });
@@ -410,11 +425,6 @@ const App = () => {
   const unassignedEmployees = employees.filter(e => 
       (!e.department || e.department === 'Unassigned') && 
       (e.email.toLowerCase().includes(deptSearchTerm.toLowerCase()) || e.firstName.toLowerCase().includes(deptSearchTerm.toLowerCase()))
-  );
-
-  const moveEmployeesList = employees.filter(e => 
-      e.department !== selectedDepartment &&
-      (e.email.toLowerCase().includes(moveSearchTerm.toLowerCase()) || e.firstName.toLowerCase().includes(moveSearchTerm.toLowerCase()))
   );
 
   return (
@@ -497,18 +507,10 @@ const App = () => {
                      </div>
                      <div className="p-8 rounded-3xl bg-white dark:bg-slate-800 shadow-xl border border-slate-100 dark:border-slate-700">
                         <h3 className="text-xl font-bold mb-4 dark:text-white flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-500"/> Overall Compliance</h3>
-                        {/* STACKED PROGRESS BAR */}
                         <div className="h-6 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex relative">
-                           <div style={{width: `${stats.acceptedPct}%`}} className="bg-emerald-500 h-full transition-all duration-1000" title="Compliant"></div>
-                           <div style={{width: `${stats.notifiedPct}%`}} className="bg-blue-500 h-full transition-all duration-1000" title="Notified"></div>
+                           <div style={{width: `${stats.percentage}%`}} className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full transition-all duration-1000 ease-out"></div>
                         </div>
-                        <div className="flex justify-between mt-3 text-sm font-bold text-slate-500">
-                           <div className="flex gap-4">
-                                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded-full"></div> {Math.round(stats.acceptedPct)}% Compliant</span>
-                                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-full"></div> {Math.round(stats.notifiedPct)}% Notified</span>
-                           </div>
-                           <span>100% Target</span>
-                        </div>
+                        <div className="flex justify-between mt-3 text-sm font-bold text-slate-500"><span>0%</span><span className="text-emerald-600">{stats.percentage}% Achieved</span><span>100%</span></div>
                      </div>
                   </div>
                )}
@@ -516,34 +518,15 @@ const App = () => {
                {/* REGISTRY */}
                {activeView === 'registry' && (
                   <div className="glass-prism rounded-3xl overflow-hidden flex flex-col min-h-[600px]">
-                     <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
-                        <div className="flex gap-2 w-full md:w-auto">
-                            {/* FILTER DROPDOWN */}
-                            <div className="relative">
-                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                <select 
-                                    className="pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none cursor-pointer hover:bg-slate-50"
-                                    value={filterStatus}
-                                    onChange={(e) => setFilterStatus(e.target.value)}
-                                >
-                                    <option value="All">All Statuses</option>
-                                    <option value="Accepted">Compliant Only</option>
-                                    <option value="Notified">Notified Only</option>
-                                    <option value="Pending">Pending Only</option>
-                                </select>
-                            </div>
-                            <div className="relative flex-1 md:w-80">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                <input className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                           {!viewOnlyMode && <button onClick={handleClearDatabase} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 flex items-center gap-2"><Trash2 className="w-4 h-4"/> Clear</button>}
-                           <button onClick={handleExportCSV} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><Download className="w-4 h-4"/> Export</button>
-                           {!viewOnlyMode && <button onClick={() => setIsImportModalOpen(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><UploadCloud className="w-4 h-4"/> Import</button>}
-                           {!viewOnlyMode && <button onClick={() => { resetForm(); setIsAddModalOpen(true); }} className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-2"><Plus className="w-4 h-4"/> Add New</button>}
-                        </div>
-                     </div>
+                     <Toolbar 
+                        searchTerm={searchTerm} 
+                        setSearchTerm={setSearchTerm} 
+                        viewOnlyMode={viewOnlyMode} 
+                        onClear={handleClearDatabase} 
+                        onExport={handleExportCSV} 
+                        onImport={() => setIsImportModalOpen(true)} 
+                        onAdd={() => { resetForm(); setIsAddModalOpen(true); }}
+                     />
                      <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left">
                            <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
@@ -572,7 +555,7 @@ const App = () => {
                                        {!viewOnlyMode && (<td className="p-4 text-right"><button onClick={() => { setFormData(emp); setEditingId(emp.id); setIsAddModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 className="w-4 h-4"/></button></td>)}
                                     </tr>
                                     {expandedRowId === emp.id && (
-                                       <tr className="bg-slate-50/50 dark:bg-slate-900/30"><td colSpan="7" className="p-6"><div className="grid grid-cols-1 md:grid-cols-3 gap-8"><div className="space-y-3"><h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Tracking Dates</h4><div className="flex justify-between text-sm"><span className="text-slate-500">Sent Date:</span><span className="font-mono font-bold dark:text-white">{emp.sentDate || 'Not Sent'}</span></div><div className="flex justify-between text-sm"><span className="text-slate-500">Received Date:</span><span className="font-mono font-bold dark:text-white">{emp.receivedDate || 'Pending'}</span></div></div><div className="space-y-3"><h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Responsibility</h4><div className="text-sm"><span className="text-slate-500 block mb-1">Responsible Officer:</span><div className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-purple-500"/> {emp.responsibleOfficer || 'Not Assigned'}</div></div></div>{!viewOnlyMode && (<div className="flex flex-col gap-2 border-l border-slate-200 dark:border-slate-700 pl-6 justify-center"><button onClick={() => handleDelete(emp.id)} className="w-full py-2 px-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center justify-center gap-2"><Trash2 className="w-3.5 h-3.5"/> Delete Record</button></div>)}</div></td></tr>
+                                       <tr className="bg-slate-50/50 dark:bg-slate-900/30"><td colSpan="7" className="p-6"><div className="grid grid-cols-1 md:grid-cols-3 gap-8"><div className="space-y-3"><h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Tracking Dates</h4><div className="flex justify-between text-sm"><span className="text-slate-500">Sent Date:</span><span className="font-mono font-bold dark:text-white">{formatDate(emp.sentDate)}</span></div><div className="flex justify-between text-sm"><span className="text-slate-500">Received Date:</span><span className="font-mono font-bold dark:text-white">{formatDate(emp.receivedDate)}</span></div></div><div className="space-y-3"><h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Responsibility</h4><div className="text-sm"><span className="text-slate-500 block mb-1">Responsible Officer:</span><div className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-purple-500"/> {emp.responsibleOfficer || 'Not Assigned'}</div></div></div>{!viewOnlyMode && (<div className="flex flex-col gap-2 border-l border-slate-200 dark:border-slate-700 pl-6 justify-center"><button onClick={() => handleDelete(emp.id)} className="w-full py-2 px-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center justify-center gap-2"><Trash2 className="w-3.5 h-3.5"/> Delete Record</button></div>)}</div></td></tr>
                                     )}
                                  </React.Fragment>
                               ))}
@@ -592,8 +575,10 @@ const App = () => {
                {/* DEPARTMENT VIEW */}
                {activeView === 'departments' && (
                   <div className="space-y-6">
+                     {/* DRILL DOWN VIEW (IF SELECTED) */}
                      {selectedDepartment ? (
                         <div className="glass-prism rounded-3xl overflow-hidden min-h-[600px] flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
+                           {/* Dept Header */}
                            <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
                               <button onClick={() => setSelectedDepartment(null)} className="mb-4 flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-blue-600 uppercase tracking-wider"><ArrowLeft className="w-4 h-4"/> Back to Departments</button>
                               <div className="flex justify-between items-start">
@@ -616,6 +601,8 @@ const App = () => {
                                  )}
                               </div>
                            </div>
+                           
+                           {/* Dept Employees Table */}
                            <div className="flex-1 p-6 bg-slate-50 dark:bg-slate-900/30">
                               <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">Department Members</h3>
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -628,7 +615,7 @@ const App = () => {
                                              <div className="text-xs text-slate-500">{emp.email}</div>
                                           </div>
                                        </div>
-                                       {emp.undertakingReceived ? <CheckCircle2 className="w-5 h-5 text-emerald-500"/> : emp.notificationSent ? <Bell className="w-5 h-5 text-blue-500"/> : <Clock className="w-5 h-5 text-amber-500"/>}
+                                       {emp.undertakingReceived ? <CheckCircle2 className="w-5 h-5 text-emerald-500"/> : <Clock className="w-5 h-5 text-amber-500"/>}
                                     </div>
                                  ))}
                                  {employees.filter(e => e.department === selectedDepartment).length === 0 && <p className="text-slate-400 italic">No members in this department yet.</p>}
@@ -636,6 +623,7 @@ const App = () => {
                            </div>
                         </div>
                      ) : (
+                        // Default Dept Grid
                         <>
                            <div className="flex justify-between items-center">
                               <h3 className="text-xl font-bold dark:text-white flex items-center gap-2"><Building2 className="w-6 h-6"/> Department Performance</h3>
@@ -680,7 +668,7 @@ const App = () => {
                               <div className="flex-1">
                                  <div className="flex justify-between items-center mb-1">
                                     <span className="text-sm font-bold text-slate-800 dark:text-white">{log.action}</span>
-                                    <span className="text-xs font-mono text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                                    <span className="text-xs font-mono text-slate-400">{formatDate(log.timestamp)}</span>
                                  </div>
                                  <p className="text-xs text-slate-500 dark:text-slate-400">{log.details}</p>
                                  <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">User: {log.user || 'System'}</p>
@@ -709,7 +697,7 @@ const App = () => {
                           <input type="text" className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none" placeholder="Search unassigned employees..." value={deptSearchTerm} onChange={(e) => setDeptSearchTerm(e.target.value)} />
                       </div>
                       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl max-h-40 overflow-y-auto">
-                          {employees.filter(e => (!e.department || e.department === 'Unassigned') && (e.email.toLowerCase().includes(deptSearchTerm.toLowerCase()))).map(emp => (
+                          {unassignedEmployees.map(emp => (
                               <label key={emp.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 p-1 rounded">
                                   <input type="checkbox" onChange={(e) => {
                                       if(e.target.checked) setDeptFormData(p => ({...p, selectedEmps: [...p.selectedEmps, emp.id]}));
@@ -718,6 +706,7 @@ const App = () => {
                                   <span className="text-xs dark:text-white truncate">{emp.email}</span>
                               </label>
                           ))}
+                          {unassignedEmployees.length === 0 && <p className="text-xs text-slate-400 italic">No unassigned employees found matching search.</p>}
                       </div>
                       <div className="flex justify-end gap-3 mt-4">
                           <button onClick={() => setIsDeptModalOpen(false)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg">Cancel</button>
@@ -758,7 +747,7 @@ const App = () => {
                           <input type="text" className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none" placeholder="Search any employee..." value={moveSearchTerm} onChange={(e) => setMoveSearchTerm(e.target.value)} />
                       </div>
                       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl max-h-60 overflow-y-auto">
-                          {moveEmployeesList.map(emp => (
+                          {employees.filter(e => e.department !== selectedDepartment && (e.email.toLowerCase().includes(moveSearchTerm.toLowerCase()) || e.firstName.toLowerCase().includes(moveSearchTerm.toLowerCase()))).map(emp => (
                               <label key={emp.id} className="flex items-center justify-between gap-2 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 p-2 rounded border-b border-slate-100 dark:border-slate-700/50 last:border-0">
                                   <div className="flex items-center gap-3">
                                       <input type="checkbox" onChange={(e) => {
@@ -859,7 +848,6 @@ const App = () => {
          </div>
       )}
 
-      {/* 5. IMPORT MODAL */}
       {isImportModalOpen && (
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="glass-prism rounded-2xl w-full max-w-md bg-white dark:bg-slate-900 p-8 text-center">
@@ -882,6 +870,21 @@ const App = () => {
 };
 
 // --- Subcomponents ---
+const Toolbar = ({ searchTerm, setSearchTerm, viewOnlyMode, onClear, onExport, onImport, onAdd }) => (
+    <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+        <div className="relative w-full md:w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Search employee, email, department..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+            {!viewOnlyMode && <button onClick={onClear} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 flex items-center gap-2"><Trash2 className="w-4 h-4"/> Clear</button>}
+            <button onClick={onExport} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><Download className="w-4 h-4"/> Export</button>
+            {!viewOnlyMode && <button onClick={onImport} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><UploadCloud className="w-4 h-4"/> Import</button>}
+            {!viewOnlyMode && <button onClick={onAdd} className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-2"><Plus className="w-4 h-4"/> Add New</button>}
+        </div>
+    </div>
+);
+
 const PrismCard = ({ title, value, icon: Icon, color }) => {
     const colors = {
         blue: 'from-blue-500 to-indigo-600',
