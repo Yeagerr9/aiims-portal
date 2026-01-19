@@ -27,7 +27,7 @@ import {
   ChevronRight, Phone, UserCircle, ChevronDown, ChevronUp, 
   LayoutDashboard, History, Bell, Menu, TrendingUp, Clock, Settings, Eye, Lock,
   FolderPlus, ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Download, Building2,
-  Moon, Sun  // <--- FIXED: These were missing!
+  Moon, Sun
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -473,6 +473,12 @@ const App = () => {
                            {viewOnlyMode ? <Lock className="w-4 h-4 text-red-500"/> : <Eye className="w-4 h-4 text-emerald-500"/>}
                            {viewOnlyMode ? "Disable View Only" : "Enable View Only"}
                        </button>
+                       {!viewOnlyMode && (
+                           <button onClick={handleClearDatabase} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-xs font-bold text-red-600 mt-1">
+                               <Trash2 className="w-4 h-4"/>
+                               Clear Database
+                           </button>
+                       )}
                    </div>
                )}
             </div>
@@ -522,7 +528,6 @@ const App = () => {
                         searchTerm={searchTerm} 
                         setSearchTerm={setSearchTerm} 
                         viewOnlyMode={viewOnlyMode} 
-                        onClear={handleClearDatabase} 
                         onExport={handleExportCSV} 
                         onImport={() => setIsImportModalOpen(true)} 
                         onAdd={() => { resetForm(); setIsAddModalOpen(true); }}
@@ -877,7 +882,7 @@ const Toolbar = ({ searchTerm, setSearchTerm, viewOnlyMode, onClear, onExport, o
             <input className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Search employee, email, department..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
         <div className="flex gap-2">
-            {!viewOnlyMode && <button onClick={onClear} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200 flex items-center gap-2"><Trash2 className="w-4 h-4"/> Clear</button>}
+            {/* REMOVED: Clear Database Button from here */}
             <button onClick={onExport} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><Download className="w-4 h-4"/> Export</button>
             {!viewOnlyMode && <button onClick={onImport} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><UploadCloud className="w-4 h-4"/> Import</button>}
             {!viewOnlyMode && <button onClick={onAdd} className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-2"><Plus className="w-4 h-4"/> Add New</button>}
