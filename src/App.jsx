@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import './index.css';
 import Confetti from 'react-confetti'; 
+import * as XLSX from 'xlsx'; // Restored Excel Features
 import aiimsLogo from './assets/logo.png';
 
 import { initializeApp } from 'firebase/app';
@@ -19,7 +20,8 @@ import {
   onSnapshot, 
   query, 
   addDoc,
-  orderBy
+  orderBy,
+  writeBatch
 } from 'firebase/firestore';
 import { 
   Users, CheckCircle2, Plus, Search, 
@@ -27,7 +29,7 @@ import {
   ChevronRight, Phone, UserCircle, ChevronDown, 
   LayoutDashboard, History, Bell, Menu, TrendingUp, Settings, Eye, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
-  Moon, Sun, LogOut, KeyRound, XCircle, Loader2
+  Moon, Sun, LogOut, KeyRound, XCircle, Loader2, Download, FileBarChart, Zap
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -64,6 +66,7 @@ const formatDate = (isoString) => {
     } catch (e) { return 'Error'; }
 };
 
+// --- Main App Component ---
 const App = () => {
   // --- AUTH & USER STATE ---
   const [adminUser, setAdminUser] = useState(null); 
@@ -86,10 +89,10 @@ const App = () => {
   const [selectedDepartment, setSelectedDepartment] = useState(null); 
   const [viewOnlyMode, setViewOnlyMode] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('All');
 
   // --- EMPLOYEE PORTAL STATE ---
   const [empSearchEmail, setEmpSearchEmail] = useState('');
-  const [empSearchMobile, setEmpSearchMobile] = useState(''); 
   const [foundEmployee, setFoundEmployee] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('idle'); 
   const [showConfetti, setShowConfetti] = useState(false); 
@@ -97,9 +100,6 @@ const App = () => {
   // --- MODALS & FORMS ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-  const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false); 
-  const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false); 
   const [editingId, setEditingId] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -108,17 +108,10 @@ const App = () => {
     undertakingReceived: false, type: 'Individual', srNo: '',
     department: '', responsibleOfficer: '', sentDate: '', receivedDate: ''
   });
-  const [deptFormData, setDeptFormData] = useState({ name: '', selectedEmps: [] });
-  const [deptMetaForm, setDeptMetaForm] = useState({ hodName: '', hodEmail: '', hodPhone: '' });
   
-  const [currentPage, setCurrentPage] = useState(1);
-  const [expandedRowId, setExpandedRowId] = useState(null); 
-  const itemsPerPage = 10;
-
   // --- INIT ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-        // Fix: Ignore anonymous users so they don't crash the admin dashboard
         if (user && !user.isAnonymous) {
             setAdminUser(user);
             fetchData(); 
@@ -132,23 +125,22 @@ const App = () => {
 
   const fetchData = () => {
     const ORG_ID = "aiims_raipur_main_db"; 
-
+    // Employees
     const qEmpReal = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings'));
-    
     const unsubEmp = onSnapshot(qEmpReal, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => (parseInt(a.srNo) || 999999) - (parseInt(b.srNo) || 999999));
       setEmployees(data);
       setLoading(false);
     });
-
+    // Dept Metadata
     const qDept = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata'));
     const unsubDept = onSnapshot(qDept, (snapshot) => {
         const meta = {};
         snapshot.docs.forEach(doc => { meta[doc.id] = doc.data(); });
         setDeptMetadata(meta);
     });
-
+    // Logs
     const qLogs = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), orderBy('timestamp', 'desc'));
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -187,22 +179,31 @@ const App = () => {
       } catch (err) { console.error("Log Error:", err); }
   };
 
+  // --- EXCEL IMPORT/EXPORT (RESTORED) ---
+  const handleExportCSV = () => {
+      const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Mobile", "Status", "Undertaking Received"];
+      const csv = [headers.join(","), ...employees.map(e => 
+        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No"].join(",")
+      )].join("\n");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      link.download = `aiims_compliance_report_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      logAction("Data Export", "Downloaded CSV Report");
+  };
+
   // --- EMPLOYEE PORTAL LOGIC ---
   const handleEmployeeSearch = (e) => {
       e.preventDefault();
+      // REMOVED MOBILE CHECK as requested
       const emp = employees.find(e => e.email.toLowerCase() === empSearchEmail.toLowerCase().trim());
       
       if(!emp) {
           alert("No record found. Please contact IT Division.");
           return;
       }
-
-      if (emp.mobile && empSearchMobile && emp.mobile.includes(empSearchMobile)) {
-          setFoundEmployee(emp);
-          setUploadStatus('idle');
-      } else {
-          alert("Security Verification Failed. Mobile number does not match our records.");
-      }
+      setFoundEmployee(emp);
+      setUploadStatus('idle');
   };
 
   const handleEmployeeUpload = async (e) => {
@@ -246,10 +247,13 @@ const App = () => {
       }, 2000);
   };
 
-  // --- ADMIN LOGIC ---
+  // --- ADMIN STATS ---
   const stats = useMemo(() => {
     const total = employees.length;
     const accepted = employees.filter(e => e.undertakingReceived).length;
+    const pending = employees.filter(e => !e.undertakingReceived).length;
+    const notified = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
+    
     const deptMap = {};
     employees.forEach(emp => {
         let d = (emp.department || 'Unassigned').trim();
@@ -259,12 +263,13 @@ const App = () => {
         if (emp.undertakingReceived) deptMap[d].compliant++;
     });
     return { 
-        total, accepted, 
+        total, accepted, pending, notified,
         percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, 
         departments: deptMap 
     };
   }, [employees]);
 
+  // --- CRUD HANDLERS ---
   const handleSave = async (e) => {
     e.preventDefault();
     if (!adminUser || viewOnlyMode) return;
@@ -285,18 +290,23 @@ const App = () => {
         resetForm();
     } catch (err) { alert("Error saving record."); }
   };
-
-  const handleClearDatabase = async () => {
-    if (!adminUser || !window.confirm("⚠️ SECURITY WARNING: This will WIPE ALL DATA. Type 'CONFIRM' to proceed.")) return;
-    alert("Safety Lock: Bulk delete disabled in this version for security.");
-  };
   
   const handleInputChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
   const resetForm = () => { setFormData({ firstName: '', lastName: '', email: '', contactPerson: '', mobile: '', status: 'Pending', notificationSent: false, undertakingReceived: false, type: 'Individual', srNo: '', department: '', responsibleOfficer: '', sentDate: '', receivedDate: '' }); setEditingId(null); };
 
-  // --- ADMIN RENDER ---
+  // --- RENDER HELPERS ---
+  const filteredEmployees = employees.filter(emp => {
+      const matchSearch = (emp.email || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (emp.firstName || '').toLowerCase().includes(searchTerm.toLowerCase());
+      if (filterStatus === 'All') return matchSearch;
+      if (filterStatus === 'Accepted') return matchSearch && emp.undertakingReceived;
+      if (filterStatus === 'Notified') return matchSearch && emp.notificationSent;
+      if (filterStatus === 'Pending') return matchSearch && !emp.notificationSent && !emp.undertakingReceived;
+      return matchSearch;
+  });
+
+  // === FRONT PAGE (EMPLOYEE PORTAL) ===
   if (!adminUser) {
-      // === SECURE EMPLOYEE / PUBLIC PORTAL ===
       return (
         <div className={`flex items-center justify-center min-h-screen relative overflow-hidden ${darkMode ? 'dark bg-gray-900' : 'bg-slate-50'}`}>
              {showConfetti && <Confetti numberOfPieces={200} recycle={false} />}
@@ -322,25 +332,22 @@ const App = () => {
 
                  {!foundEmployee ? (
                      <form onSubmit={handleEmployeeSearch} className="space-y-4">
-                         <div className="bg-blue-50/50 dark:bg-slate-800/50 p-4 rounded-xl border border-blue-100 dark:border-slate-700">
-                             <p className="text-xs text-slate-500 mb-3 text-center">Enter your details to verify identity</p>
+                         <div className="bg-blue-50/50 dark:bg-slate-800/50 p-6 rounded-xl border border-blue-100 dark:border-slate-700">
+                             <p className="text-xs text-slate-500 mb-3 text-center uppercase font-bold tracking-wide">Identity Verification</p>
                              <div className="space-y-3">
                                 <div className="relative">
                                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <input type="email" placeholder="Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold dark:text-white" required />
-                                </div>
-                                <div className="relative">
-                                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <input type="text" placeholder="Mobile Number (Last 4 digits)" value={empSearchMobile} onChange={(e) => setEmpSearchMobile(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold dark:text-white" required />
+                                    <input type="email" placeholder="Enter Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold dark:text-white text-lg" required />
                                 </div>
                              </div>
                          </div>
                          <button type="submit" className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
-                             Verify Identity <ArrowLeft className="w-5 h-5 rotate-180"/>
+                             Check Status <ArrowLeft className="w-5 h-5 rotate-180"/>
                          </button>
                      </form>
                  ) : (
                      <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
+                         {/* Employee Info Card */}
                          <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 text-left relative overflow-hidden group">
                              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-16 translate-x-16 group-hover:bg-blue-500/20 transition-all"></div>
                              
@@ -364,13 +371,18 @@ const App = () => {
                              </div>
                          </div>
 
+                         {/* Upload or Success State */}
                          {uploadStatus === 'success' || foundEmployee.undertakingReceived ? (
-                             <div className="text-center py-6 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800">
-                                 <div className="w-16 h-16 bg-white dark:bg-emerald-900 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-500 shadow-sm border border-emerald-100 dark:border-emerald-800 animate-bounce">
+                             <div className="text-center py-6 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800 relative overflow-hidden">
+                                 <div className="absolute inset-0 bg-repeat opacity-5" style={{backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1h2v2H1V1zm4 0h2v2H5V1zm5 4h2v2h-2V5zm-5 4h2v2H5V9zm5 5h2v2h-2v-2zM5 13h2v2H5v-2zm-5 5h2v2H0v-2z\' fill=\'%23000000\' fill-opacity=\'1\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")'}}></div>
+                                 <div className="w-16 h-16 bg-white dark:bg-emerald-900 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-500 shadow-sm border border-emerald-100 dark:border-emerald-800 animate-bounce relative z-10">
                                      <CheckCircle2 className="w-8 h-8"/>
                                  </div>
-                                 <h3 className="text-lg font-bold text-emerald-800 dark:text-emerald-400">All Set!</h3>
-                                 <p className="text-xs text-emerald-600 dark:text-emerald-500 px-4">Your undertaking has been securely filed with the IT Department.</p>
+                                 <h3 className="text-lg font-bold text-emerald-800 dark:text-emerald-400 relative z-10">Certificate of Compliance</h3>
+                                 <p className="text-xs text-emerald-600 dark:text-emerald-500 px-4 mb-4 relative z-10">Your undertaking has been securely filed with the IT Department.</p>
+                                 <div className="inline-block px-4 py-1 bg-white dark:bg-slate-800 rounded-full text-[10px] font-mono text-slate-500 border border-emerald-200 relative z-10">
+                                    REF: {foundEmployee.id.substring(0,8).toUpperCase()}
+                                 </div>
                              </div>
                          ) : (
                              <div className="space-y-4">
@@ -397,6 +409,7 @@ const App = () => {
                  )}
              </div>
 
+             {/* ADMIN LOGIN MODAL */}
              {showAdminLogin && (
                  <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
                      <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl w-full max-w-sm relative animate-in zoom-in-95 duration-200 border border-slate-100 dark:border-slate-700">
@@ -427,17 +440,7 @@ const App = () => {
       );
   }
 
-  // === ADMIN DASHBOARD VIEW (Authenticated) ===
-  const filteredEmployees = employees.filter(emp => {
-      const matchSearch = (emp.email || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (emp.firstName || '').toLowerCase().includes(searchTerm.toLowerCase());
-      if (filterStatus === 'All') return matchSearch;
-      if (filterStatus === 'Accepted') return matchSearch && emp.undertakingReceived;
-      if (filterStatus === 'Notified') return matchSearch && emp.notificationSent;
-      if (filterStatus === 'Pending') return matchSearch && !emp.notificationSent && !emp.undertakingReceived;
-      return matchSearch;
-  });
-  
+  // === ADMIN DASHBOARD VIEW ===
   return (
     <div className={`flex h-screen overflow-hidden ${darkMode ? 'dark bg-gray-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
@@ -450,8 +453,9 @@ const App = () => {
             </div>
 
             <nav className="flex-1 p-4 space-y-1">
-               <button onClick={() => setActiveView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
+               <button onClick={() => {setActiveView('dashboard'); setFilterStatus('All')}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
                <button onClick={() => setActiveView('registry')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'registry' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Users className="w-5 h-5" /> Registry</button>
+               <button onClick={() => setActiveView('departments')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'departments' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Building2 className="w-5 h-5" /> Departments</button>
                <button onClick={() => setActiveView('audit')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'audit' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><History className="w-5 h-5" /> Audit Logs</button>
             </nav>
 
@@ -463,7 +467,7 @@ const App = () => {
                </button>
                {isAdminMenuOpen && (
                    <div className="absolute bottom-20 left-4 right-4 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 p-2 z-50">
-                       <button onClick={handleClearDatabase} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 text-xs font-bold text-red-600"><Trash2 className="w-4 h-4"/> Wipe Data</button>
+                       <button onClick={() => alert("Coming soon")} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 text-xs font-bold text-red-600"><Trash2 className="w-4 h-4"/> Wipe Data</button>
                        <div className="h-px bg-slate-100 my-1"></div>
                        <button onClick={handleAdminLogout} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 text-xs font-bold text-slate-600"><LogOut className="w-4 h-4"/> Logout</button>
                    </div>
@@ -476,48 +480,93 @@ const App = () => {
       <main className="flex-1 ml-0 md:ml-64 flex flex-col h-full overflow-hidden">
          <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center justify-between px-6">
             <h1 className="text-lg font-extrabold text-slate-800 dark:text-white capitalize">{activeView}</h1>
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">{darkMode ? <Sun className="w-5 h-5 text-amber-400"/> : <Moon className="w-5 h-5 text-indigo-600"/>}</button>
+            <div className="flex gap-2">
+                <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">{darkMode ? <Sun className="w-5 h-5 text-amber-400"/> : <Moon className="w-5 h-5 text-indigo-600"/>}</button>
+            </div>
          </header>
 
          <div className="flex-1 overflow-y-auto p-6">
              {loading ? <TableSkeleton /> : (
                  <>
                     {activeView === 'dashboard' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="p-6 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-500/30">
-                                <h3 className="text-3xl font-black">{stats.total}</h3>
-                                <p className="text-sm font-bold opacity-80 uppercase">Total Staff</p>
+                        <div className="space-y-6">
+                            {/* NEW: Stats Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <button onClick={() => {setFilterStatus('All'); setActiveView('registry')}} className="p-6 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-500/30 text-left hover:scale-105 transition-transform">
+                                    <h3 className="text-3xl font-black">{stats.total}</h3>
+                                    <p className="text-sm font-bold opacity-80 uppercase flex items-center gap-2"><Users className="w-4 h-4"/> Total Staff</p>
+                                </button>
+                                <button onClick={() => {setFilterStatus('Accepted'); setActiveView('registry')}} className="p-6 bg-emerald-500 text-white rounded-2xl shadow-lg shadow-emerald-500/30 text-left hover:scale-105 transition-transform">
+                                    <h3 className="text-3xl font-black">{stats.accepted}</h3>
+                                    <p className="text-sm font-bold opacity-80 uppercase flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> Compliant</p>
+                                </button>
+                                <button onClick={() => {setFilterStatus('Notified'); setActiveView('registry')}} className="p-6 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 text-left hover:scale-105 transition-transform">
+                                    <h3 className="text-3xl font-black">{stats.notified}</h3>
+                                    <p className="text-sm font-bold opacity-80 uppercase flex items-center gap-2"><Bell className="w-4 h-4"/> Notified</p>
+                                </button>
+                                <button onClick={() => {setFilterStatus('Pending'); setActiveView('registry')}} className="p-6 bg-red-500 text-white rounded-2xl shadow-lg shadow-red-500/30 text-left hover:scale-105 transition-transform">
+                                    <h3 className="text-3xl font-black">{stats.pending}</h3>
+                                    <p className="text-sm font-bold opacity-80 uppercase flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Action Req</p>
+                                </button>
                             </div>
-                            <div className="p-6 bg-emerald-500 text-white rounded-2xl shadow-lg shadow-emerald-500/30">
-                                <h3 className="text-3xl font-black">{stats.accepted}</h3>
-                                <p className="text-sm font-bold opacity-80 uppercase">Compliant</p>
-                            </div>
-                            <div className="p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
-                                <h3 className="text-3xl font-black text-slate-800 dark:text-white">{stats.percentage}%</h3>
-                                <div className="w-full bg-slate-100 h-2 rounded-full mt-2 overflow-hidden"><div style={{width: `${stats.percentage}%`}} className="bg-blue-600 h-full"></div></div>
-                                <p className="text-xs font-bold text-slate-400 mt-2 uppercase">Compliance Rate</p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* NEW: Quick Actions Panel */}
+                                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+                                    <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Zap className="w-5 h-5 text-amber-500"/> Quick Actions</h3>
+                                    <div className="space-y-3">
+                                        <button onClick={handleExportCSV} className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 transition-colors text-left text-sm font-bold text-slate-600 dark:text-slate-300">
+                                            <div className="p-2 bg-green-100 text-green-600 rounded-lg"><FileBarChart className="w-4 h-4"/></div> Download Excel Report
+                                        </button>
+                                        <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 transition-colors text-left text-sm font-bold text-slate-600 dark:text-slate-300">
+                                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Plus className="w-4 h-4"/></div> Add New Employee
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* NEW: Visual Analytics (CSS Pie Chart) */}
+                                <div className="md:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-500"/> Compliance Analytics</h3>
+                                        <p className="text-sm text-slate-500 mb-4">Real-time tracking of department submissions.</p>
+                                        <div className="flex gap-4">
+                                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Accepted ({stats.accepted})</div>
+                                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><span className="w-3 h-3 rounded-full bg-slate-200"></span> Pending ({stats.pending})</div>
+                                        </div>
+                                    </div>
+                                    {/* CSS Conic Gradient Pie Chart */}
+                                    <div className="w-32 h-32 rounded-full relative" style={{background: `conic-gradient(#10b981 ${stats.percentage}%, #e2e8f0 0)`}}>
+                                        <div className="absolute inset-2 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center">
+                                            <span className="text-xl font-black text-slate-800 dark:text-white">{stats.percentage}%</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {activeView === 'registry' && (
                         <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between gap-4">
-                                <input className="flex-1 bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 font-bold text-sm" placeholder="Search registry..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800">+ Add</button>
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col md:flex-row justify-between gap-4">
+                                <input className="flex-1 bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold text-sm" placeholder="Search registry..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <div className="flex gap-2">
+                                    <button onClick={handleExportCSV} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 flex items-center gap-2"><Download className="w-4 h-4"/> Export</button>
+                                    <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 flex items-center gap-2"><Plus className="w-4 h-4"/> Add</button>
+                                </div>
                             </div>
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 uppercase">
-                                    <tr><th className="p-4">Staff</th><th className="p-4">Contact</th><th className="p-4">Status</th><th className="p-4 text-right">Action</th></tr>
+                                    <tr><th className="p-4">Staff</th><th className="p-4">Contact</th><th className="p-4">Department</th><th className="p-4">Status</th><th className="p-4 text-right">Action</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {filteredEmployees.slice(0, 10).map(emp => (
+                                    {filteredEmployees.slice(0, 50).map(emp => (
                                         <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                                             <td className="p-4">
                                                 <div className="font-bold text-sm dark:text-white">{emp.firstName} {emp.lastName}</div>
                                                 <div className="text-xs text-slate-500">{emp.email}</div>
                                             </td>
                                             <td className="p-4 text-xs font-mono text-slate-600 dark:text-slate-400">{emp.mobile || 'N/A'}</td>
+                                            <td className="p-4 text-xs font-bold text-slate-600 dark:text-slate-400">{emp.department || 'Unassigned'}</td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${emp.undertakingReceived ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                                     {emp.undertakingReceived ? 'Compliant' : 'Pending'}
@@ -530,6 +579,24 @@ const App = () => {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    
+                    {activeView === 'departments' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {Object.entries(stats.departments).map(([name, data]) => (
+                                <div key={name} className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all cursor-pointer">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">{name.charAt(0)}</div>
+                                        <span className="text-xs font-bold text-slate-400">{data.total} Staff</span>
+                                    </div>
+                                    <h4 className="font-bold text-lg dark:text-white mb-2">{name}</h4>
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-2">
+                                        <div style={{width: `${(data.compliant/data.total)*100}%`}} className="bg-emerald-500 h-full"></div>
+                                    </div>
+                                    <div className="text-xs text-emerald-600 font-bold">{data.compliant} Compliant</div>
+                                </div>
+                            ))}
                         </div>
                     )}
 
@@ -565,6 +632,7 @@ const App = () => {
                         <input name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleInputChange} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none" />
                       </div>
                       <input name="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none" required />
+                      <input name="department" placeholder="Department" value={formData.department} onChange={handleInputChange} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none" />
                       <input name="mobile" placeholder="Mobile" value={formData.mobile} onChange={handleInputChange} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none" />
                       
                       <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl space-y-2">
