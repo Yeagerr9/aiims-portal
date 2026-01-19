@@ -30,7 +30,7 @@ import {
   LayoutDashboard, History, Bell, Menu, TrendingUp, Settings, Eye, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
   Moon, Sun, LogOut, KeyRound, XCircle, Loader2, Download, FileBarChart, Zap,
-  FileSpreadsheet, List
+  FileSpreadsheet, List, FolderPlus, Clock, UserCheck, ArrowRightLeft
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -47,6 +47,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'aiims-default'; 
+const ORG_ID = "aiims_raipur_main_db"; 
 
 // --- Helper Components ---
 const TableSkeleton = () => (
@@ -77,6 +78,7 @@ const App = () => {
 
   // --- DATA STATE ---
   const [employees, setEmployees] = useState([]);
+  const [deptMetadata, setDeptMetadata] = useState({}); 
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -85,6 +87,7 @@ const App = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedDepartment, setSelectedDepartment] = useState(null); 
   const [viewOnlyMode, setViewOnlyMode] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('All');
@@ -94,19 +97,29 @@ const App = () => {
   const [foundEmployee, setFoundEmployee] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('idle'); 
   const [showConfetti, setShowConfetti] = useState(false); 
-  const [showPublicList, setShowPublicList] = useState(false); // New Feature
+  const [showPublicList, setShowPublicList] = useState(false);
 
   // --- MODALS & FORMS ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false); 
+  const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false); 
   const [editingId, setEditingId] = useState(null);
   
+  // Form Data
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', contactPerson: '',
     mobile: '', status: 'Pending', notificationSent: false,
     undertakingReceived: false, type: 'Individual', srNo: '',
     department: '', responsibleOfficer: '', sentDate: '', receivedDate: ''
   });
+
+  const [deptFormData, setDeptFormData] = useState({ name: '', selectedEmps: [] });
+  const [deptMetaForm, setDeptMetaForm] = useState({ hodName: '', hodEmail: '', hodPhone: '' });
+  const [deptSearchTerm, setDeptSearchTerm] = useState(''); 
+  const [moveSearchTerm, setMoveSearchTerm] = useState('');
+  const [selectedMoveEmps, setSelectedMoveEmps] = useState([]);
   
   // --- INIT ---
   useEffect(() => {
@@ -116,15 +129,12 @@ const App = () => {
         } else {
             setAdminUser(null);
         }
-        // Always fetch data so public portal works
         fetchData();
     });
     return () => unsubscribe();
   }, []);
 
   const fetchData = () => {
-    const ORG_ID = "aiims_raipur_main_db"; 
-    
     // Employees
     const qEmpReal = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings'));
     const unsubEmp = onSnapshot(qEmpReal, (snapshot) => {
@@ -134,6 +144,14 @@ const App = () => {
       setLoading(false);
     });
 
+    // Dept Metadata
+    const qDept = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata'));
+    const unsubDept = onSnapshot(qDept, (snapshot) => {
+        const meta = {};
+        snapshot.docs.forEach(doc => { meta[doc.id] = doc.data(); });
+        setDeptMetadata(meta);
+    });
+
     // Logs
     const qLogs = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), orderBy('timestamp', 'desc'));
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
@@ -141,7 +159,7 @@ const App = () => {
         setAuditLogs(logs);
     });
     
-    return () => { unsubEmp(); unsubLogs(); };
+    return () => { unsubEmp(); unsubDept(); unsubLogs(); };
   };
 
   // --- CORE AUTH LOGIC ---
@@ -165,12 +183,62 @@ const App = () => {
 
   // --- LOGGING ---
   const logAction = async (action, details, type = 'info', actor = 'Admin') => {
-      const ORG_ID = "aiims_raipur_main_db";
       try {
           await addDoc(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), {
               action, details, type, timestamp: new Date().toISOString(), user: actor
           });
       } catch (err) { console.error("Log Error:", err); }
+  };
+
+  // --- DEPARTMENT LOGIC ---
+  const handleCreateDepartment = async () => {
+      if(!adminUser || viewOnlyMode) return;
+      if(!deptFormData.name.trim()) return alert("Please enter a department name.");
+      
+      try {
+          const batch = writeBatch(db);
+          deptFormData.selectedEmps.forEach(empId => {
+              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId);
+              batch.update(ref, { department: deptFormData.name, updatedAt: new Date().toISOString() });
+          });
+
+          await batch.commit();
+          await logAction("Department Created", `Created '${deptFormData.name}'`, 'success');
+          
+          setIsDeptModalOpen(false);
+          setDeptFormData({ name: '', selectedEmps: [] });
+          setDeptSearchTerm('');
+      } catch (err) { console.error(err); alert("Failed to create department."); }
+  };
+
+  const handleUpdateDeptMeta = async () => {
+      if(!adminUser || viewOnlyMode || !selectedDepartment) return;
+      try {
+          await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata', selectedDepartment), {
+              ...deptMetaForm,
+              updatedAt: new Date().toISOString()
+          }, { merge: true });
+          setIsDeptEditModalOpen(false);
+          await logAction("Dept Info Updated", `Updated metadata for ${selectedDepartment}`, 'info');
+      } catch (err) { console.error(err); alert("Failed to update department info."); }
+  };
+
+  const handleMoveEmployees = async () => {
+      if(!adminUser || viewOnlyMode || !selectedDepartment) return;
+      if(selectedMoveEmps.length === 0) return alert("Select at least one employee.");
+
+      try {
+          const batch = writeBatch(db);
+          selectedMoveEmps.forEach(empId => {
+              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId);
+              batch.update(ref, { department: selectedDepartment, updatedAt: new Date().toISOString() });
+          });
+          await batch.commit();
+          await logAction("Staff Moved", `Moved ${selectedMoveEmps.length} staff to ${selectedDepartment}`, 'warning');
+          setIsMoveMemberModalOpen(false);
+          setSelectedMoveEmps([]);
+          setMoveSearchTerm('');
+      } catch (err) { console.error(err); alert("Move failed."); }
   };
 
   // --- EXCEL IMPORT/EXPORT ---
@@ -199,11 +267,8 @@ const App = () => {
         
         if (jsonData.length < 2) return alert("File appears empty.");
 
-        const ORG_ID = "aiims_raipur_main_db";
         const batch = writeBatch(db);
         let count = 0;
-
-        // Simple Mapping: Assume Col 0=SrNo, 1=First, 2=Last, 3=Email, 4=Dept
         const headers = jsonData[0].map(h => h?.toString().toLowerCase().trim() || '');
         const emailIdx = headers.findIndex(h => h.includes('email'));
         
@@ -269,7 +334,6 @@ const App = () => {
       
       setTimeout(async () => {
           try {
-              const ORG_ID = "aiims_raipur_main_db";
               const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', foundEmployee.id);
               
               await setDoc(ref, {
@@ -298,14 +362,15 @@ const App = () => {
     const pending = employees.filter(e => !e.undertakingReceived).length;
     const notified = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
     
-    const deptMap = {};
+    const deptMap = { 'Unassigned': { name: 'Unassigned', total: 0, compliant: 0, employees: [] } };
     employees.forEach(emp => {
         let d = (emp.department || 'Unassigned').trim();
         if(!d) d = 'Unassigned';
-        if (!deptMap[d]) deptMap[d] = { name: d, total: 0, compliant: 0, employees: [] };
+        if(!deptMap[d]) deptMap[d] = { name: d, total: 0, compliant: 0, employees: [] };
         deptMap[d].total++;
         if (emp.undertakingReceived) deptMap[d].compliant++;
     });
+    if(deptMap['Unassigned'].total === 0) delete deptMap['Unassigned'];
     return { 
         total, accepted, pending, notified,
         percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, 
@@ -317,7 +382,6 @@ const App = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!adminUser || viewOnlyMode) return;
-    const ORG_ID = "aiims_raipur_main_db";
     const docId = formData.email || `unknown_${Date.now()}`;
     
     let status = 'Pending';
@@ -349,57 +413,36 @@ const App = () => {
       return matchSearch;
   });
 
+  const unassignedEmployees = employees.filter(e => 
+      (!e.department || e.department === 'Unassigned') && 
+      (e.email.toLowerCase().includes(deptSearchTerm.toLowerCase()) || e.firstName.toLowerCase().includes(deptSearchTerm.toLowerCase()))
+  );
+
   // === FRONT PAGE (EMPLOYEE PORTAL) ===
   if (!adminUser) {
       return (
         <div className={`flex items-center justify-center min-h-screen relative overflow-hidden ${darkMode ? 'dark bg-gray-900' : 'bg-slate-50'}`}>
              {showConfetti && <Confetti numberOfPieces={200} recycle={false} />}
-             
              <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-600 to-blue-500 rounded-b-[50px] shadow-2xl z-0"></div>
-
              <div className="absolute top-4 right-4 flex gap-2 z-10">
                  <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 shadow-lg">{darkMode ? <Sun className="w-5 h-5"/> : <Moon className="w-5 h-5"/>}</button>
                  <button onClick={() => setShowAdminLogin(true)} className="flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md text-white border border-white/20 rounded-full text-xs font-bold hover:bg-white/20 shadow-lg transition-all"><Lock className="w-3 h-3"/> Admin Access</button>
              </div>
-
              <div className="w-full max-w-lg p-8 mx-4 glass-prism rounded-3xl bg-white dark:bg-slate-900 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-500">
                  <div className="flex flex-col items-center text-center mb-8">
                      <div className="w-24 h-24 bg-white rounded-full shadow-lg p-4 mb-4 flex items-center justify-center border-4 border-blue-50 dark:border-slate-700">
                         <img src={aiimsLogo} alt="AIIMS" className="w-full h-full object-contain" />
                      </div>
                      <h1 className="text-2xl font-black text-slate-800 dark:text-white mb-1">AIIMS Raipur</h1>
-                     <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-slate-800 rounded-full border border-blue-100 dark:border-slate-700">
-                        <ShieldCheck className="w-3 h-3 text-blue-600"/>
-                        <p className="text-[10px] font-bold text-blue-800 dark:text-blue-400 uppercase tracking-widest">Secure Compliance Gateway</p>
-                     </div>
+                     <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-slate-800 rounded-full border border-blue-100 dark:border-slate-700"><ShieldCheck className="w-3 h-3 text-blue-600"/><p className="text-[10px] font-bold text-blue-800 dark:text-blue-400 uppercase tracking-widest">Secure Compliance Gateway</p></div>
                  </div>
-
-                 {/* Public List Toggle */}
                  {showPublicList ? (
                      <div className="animate-in slide-in-from-right duration-300">
-                         <div className="flex items-center justify-between mb-4">
-                             <h3 className="font-bold text-slate-700 dark:text-white">Public Status List</h3>
-                             <button onClick={() => setShowPublicList(false)} className="text-xs font-bold text-blue-600 hover:underline">Back to Search</button>
-                         </div>
+                         <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-slate-700 dark:text-white">Public Status List</h3><button onClick={() => setShowPublicList(false)} className="text-xs font-bold text-blue-600 hover:underline">Back to Search</button></div>
                          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden max-h-96 overflow-y-auto">
                              <table className="w-full text-left text-xs">
-                                 <thead className="bg-slate-100 dark:bg-slate-700 text-slate-500 font-bold uppercase sticky top-0">
-                                     <tr><th className="p-3">Name</th><th className="p-3">Department</th><th className="p-3 text-right">Status</th></tr>
-                                 </thead>
-                                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                     {employees.map(emp => (
-                                         <tr key={emp.id}>
-                                             <td className="p-3 font-bold dark:text-white">{emp.firstName} {emp.lastName}</td>
-                                             <td className="p-3 text-slate-500">{emp.department}</td>
-                                             <td className="p-3 text-right">
-                                                 {emp.undertakingReceived ? 
-                                                    <span className="text-emerald-600 font-bold">Received</span> : 
-                                                    <span className="text-amber-500 font-bold">Pending</span>
-                                                 }
-                                             </td>
-                                         </tr>
-                                     ))}
-                                 </tbody>
+                                 <thead className="bg-slate-100 dark:bg-slate-700 text-slate-500 font-bold uppercase sticky top-0"><tr><th className="p-3">Name</th><th className="p-3">Department</th><th className="p-3 text-right">Status</th></tr></thead>
+                                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">{employees.map(emp => (<tr key={emp.id}><td className="p-3 font-bold dark:text-white">{emp.firstName} {emp.lastName}</td><td className="p-3 text-slate-500">{emp.department}</td><td className="p-3 text-right">{emp.undertakingReceived ? <span className="text-emerald-600 font-bold">Received</span> : <span className="text-amber-500 font-bold">Pending</span>}</td></tr>))}</tbody>
                              </table>
                          </div>
                      </div>
@@ -409,50 +452,22 @@ const App = () => {
                             <form onSubmit={handleEmployeeSearch} className="space-y-4">
                                 <div className="bg-blue-50/50 dark:bg-slate-800/50 p-6 rounded-xl border border-blue-100 dark:border-slate-700">
                                     <p className="text-xs text-slate-500 mb-3 text-center uppercase font-bold tracking-wide">Identity Verification</p>
-                                    <div className="space-y-3">
-                                        <div className="relative">
-                                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                            <input type="email" placeholder="Enter Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold dark:text-white text-lg" required />
-                                        </div>
-                                    </div>
+                                    <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="email" placeholder="Enter Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold dark:text-white text-lg" required /></div>
                                 </div>
-                                <button type="submit" className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
-                                    Check Status <ArrowLeft className="w-5 h-5 rotate-180"/>
-                                </button>
-                                <button type="button" onClick={() => setShowPublicList(true)} className="w-full py-2 text-slate-500 dark:text-slate-400 text-xs font-bold hover:text-blue-600 flex items-center justify-center gap-2">
-                                    <List className="w-4 h-4"/> View Public Compliance List
-                                </button>
+                                <button type="submit" className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">Check Status <ArrowLeft className="w-5 h-5 rotate-180"/></button>
+                                <button type="button" onClick={() => setShowPublicList(true)} className="w-full py-2 text-slate-500 dark:text-slate-400 text-xs font-bold hover:text-blue-600 flex items-center justify-center gap-2"><List className="w-4 h-4"/> View Public Compliance List</button>
                             </form>
                         ) : (
                             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
                                 <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 text-left relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-16 translate-x-16 group-hover:bg-blue-500/20 transition-all"></div>
-                                    
                                     <button onClick={() => {setFoundEmployee(null); setUploadStatus('idle');}} className="absolute top-2 right-2 p-2 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full z-10"><LogOut className="w-4 h-4 text-slate-500"/></button>
-                                    
                                     <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">Authenticated User</h3>
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-full flex items-center justify-center text-xl font-black text-blue-600 shadow-sm border border-slate-100 dark:border-slate-600">
-                                            {(foundEmployee.firstName || '?').charAt(0)}
-                                        </div>
-                                        <div>
-                                            <p className="text-lg font-black text-slate-800 dark:text-white leading-tight">{foundEmployee.firstName} {foundEmployee.lastName}</p>
-                                            <p className="text-xs text-slate-500 font-medium">{foundEmployee.email}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="mt-6 flex items-center gap-2">
-                                        <div className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase text-center border ${foundEmployee.undertakingReceived ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                                            {foundEmployee.undertakingReceived ? '✅ Compliance Verified' : '⚠️ Action Required'}
-                                        </div>
-                                    </div>
+                                    <div className="flex items-center gap-4"><div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-full flex items-center justify-center text-xl font-black text-blue-600 shadow-sm border border-slate-100 dark:border-slate-600">{(foundEmployee.firstName || '?').charAt(0)}</div><div><p className="text-lg font-black text-slate-800 dark:text-white leading-tight">{foundEmployee.firstName} {foundEmployee.lastName}</p><p className="text-xs text-slate-500 font-medium">{foundEmployee.email}</p></div></div>
+                                    <div className="mt-6 flex items-center gap-2"><div className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase text-center border ${foundEmployee.undertakingReceived ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{foundEmployee.undertakingReceived ? '✅ Compliance Verified' : '⚠️ Action Required'}</div></div>
                                 </div>
-
                                 {uploadStatus === 'success' || foundEmployee.undertakingReceived ? (
                                     <div className="text-center py-6 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800 relative overflow-hidden">
-                                        <div className="w-16 h-16 bg-white dark:bg-emerald-900 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-500 shadow-sm border border-emerald-100 dark:border-emerald-800 animate-bounce relative z-10">
-                                            <CheckCircle2 className="w-8 h-8"/>
-                                        </div>
+                                        <div className="w-16 h-16 bg-white dark:bg-emerald-900 rounded-full flex items-center justify-center mx-auto mb-3 text-emerald-500 shadow-sm border border-emerald-100 dark:border-emerald-800 animate-bounce relative z-10"><CheckCircle2 className="w-8 h-8"/></div>
                                         <h3 className="text-lg font-bold text-emerald-800 dark:text-emerald-400 relative z-10">Certificate of Compliance</h3>
                                         <p className="text-xs text-emerald-600 dark:text-emerald-500 px-4 mb-4 relative z-10">Your undertaking has been securely filed with the IT Department.</p>
                                     </div>
@@ -460,19 +475,9 @@ const App = () => {
                                     <div className="space-y-4">
                                         <div className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 ${uploadStatus === 'uploading' ? 'border-blue-400 bg-blue-50/50' : 'border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 cursor-pointer group hover:scale-[1.02] hover:shadow-xl'}`}>
                                             {uploadStatus === 'uploading' ? (
-                                                <div className="flex flex-col items-center">
-                                                    <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-3"/>
-                                                    <p className="text-sm font-bold text-blue-700">Encrypting & Uploading...</p>
-                                                </div>
+                                                <div className="flex flex-col items-center"><Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-3"/><p className="text-sm font-bold text-blue-700">Encrypting & Uploading...</p></div>
                                             ) : (
-                                                <label className="cursor-pointer block">
-                                                    <input type="file" accept=".pdf,.jpg,.png" onChange={handleEmployeeUpload} className="hidden" />
-                                                    <div className="w-14 h-14 bg-blue-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-blue-600 group-hover:scale-110 transition-transform">
-                                                        <UploadCloud className="w-7 h-7" />
-                                                    </div>
-                                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-blue-700">Upload Signed Undertaking</p>
-                                                    <p className="text-[10px] text-slate-400 mt-2 font-medium bg-white dark:bg-slate-800 px-2 py-1 rounded-full inline-block border border-slate-100 dark:border-slate-700">PDF, JPG or PNG (Max 5MB)</p>
-                                                </label>
+                                                <label className="cursor-pointer block"><input type="file" accept=".pdf,.jpg,.png" onChange={handleEmployeeUpload} className="hidden" /><div className="w-14 h-14 bg-blue-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-blue-600 group-hover:scale-110 transition-transform"><UploadCloud className="w-7 h-7" /></div><p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-blue-700">Upload Signed Undertaking</p><p className="text-[10px] text-slate-400 mt-2 font-medium bg-white dark:bg-slate-800 px-2 py-1 rounded-full inline-block border border-slate-100 dark:border-slate-700">PDF, JPG or PNG (Max 5MB)</p></label>
                                             )}
                                         </div>
                                     </div>
@@ -527,9 +532,10 @@ const App = () => {
             </div>
 
             <nav className="flex-1 p-4 space-y-1">
-               <button onClick={() => {setActiveView('dashboard'); setFilterStatus('All')}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
-               <button onClick={() => setActiveView('registry')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'registry' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Users className="w-5 h-5" /> Registry</button>
-               <button onClick={() => setActiveView('audit')} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'audit' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><History className="w-5 h-5" /> Audit Logs</button>
+               <button onClick={() => {setActiveView('dashboard'); setFilterStatus('All'); setSelectedDepartment(null)}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
+               <button onClick={() => {setActiveView('registry'); setSelectedDepartment(null)}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'registry' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Users className="w-5 h-5" /> Registry</button>
+               <button onClick={() => {setActiveView('departments'); setSelectedDepartment(null)}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'departments' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Building2 className="w-5 h-5" /> Departments</button>
+               <button onClick={() => {setActiveView('audit'); setSelectedDepartment(null)}} className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl ${activeView === 'audit' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><History className="w-5 h-5" /> Audit Logs</button>
             </nav>
 
             <div className="p-4 border-t border-slate-100 dark:border-slate-800">
@@ -630,7 +636,13 @@ const App = () => {
                             </div>
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 uppercase">
-                                    <tr><th className="p-4">Staff</th><th className="p-4">Contact</th><th className="p-4">Department</th><th className="p-4">Status</th><th className="p-4 text-right">Action</th></tr>
+                                    <tr>
+                                        <th className="p-4">Staff</th>
+                                        <th className="p-4">Department</th>
+                                        <th className="p-4 text-center">Notified</th>
+                                        <th className="p-4 text-center">Undertaking</th>
+                                        <th className="p-4 text-right">Action</th>
+                                    </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                     {filteredEmployees.slice(0, 50).map(emp => (
@@ -638,13 +650,20 @@ const App = () => {
                                             <td className="p-4">
                                                 <div className="font-bold text-sm dark:text-white">{emp.firstName} {emp.lastName}</div>
                                                 <div className="text-xs text-slate-500">{emp.email}</div>
+                                                <div className="text-[10px] text-slate-400 mt-1">{emp.mobile || 'No Mobile'}</div>
                                             </td>
-                                            <td className="p-4 text-xs font-mono text-slate-600 dark:text-slate-400">{emp.mobile || 'N/A'}</td>
                                             <td className="p-4 text-xs font-bold text-slate-600 dark:text-slate-400">{emp.department || 'Unassigned'}</td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${emp.undertakingReceived ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                    {emp.undertakingReceived ? 'Compliant' : 'Pending'}
-                                                </span>
+                                            <td className="p-4 text-center">
+                                                {emp.notificationSent ? 
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold"><Bell className="w-3 h-3"/> Sent</span> : 
+                                                    <span className="text-slate-300">-</span>
+                                                }
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                {emp.undertakingReceived ? 
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-bold"><CheckCircle2 className="w-3 h-3"/> Received</span> : 
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-md text-[10px] font-bold"><XCircle className="w-3 h-3"/> Pending</span>
+                                                }
                                             </td>
                                             <td className="p-4 text-right">
                                                 <button onClick={() => {setFormData(emp); setEditingId(emp.id); setIsAddModalOpen(true)}} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg"><Edit2 className="w-4 h-4"/></button>
@@ -655,21 +674,88 @@ const App = () => {
                             </table>
                         </div>
                     )}
+                    
+                    {activeView === 'departments' && (
+                        <div className="space-y-6">
+                            {selectedDepartment ? (
+                                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in slide-in-from-right duration-300">
+                                    <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                                        <div>
+                                            <button onClick={() => setSelectedDepartment(null)} className="text-xs font-bold text-blue-600 mb-2 flex items-center gap-1 hover:underline"><ArrowLeft className="w-3 h-3"/> Back to All Departments</button>
+                                            <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-blue-500"/> {selectedDepartment}</h2>
+                                            <div className="flex gap-4 mt-2 text-xs text-slate-500">
+                                                <span className="flex items-center gap-1"><UserCircle className="w-3 h-3"/> Head: {deptMetadata[selectedDepartment]?.hodName || 'Not Assigned'}</span>
+                                                <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {deptMetadata[selectedDepartment]?.hodPhone || 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => {setDeptMetaForm(deptMetadata[selectedDepartment] || {}); setIsDeptEditModalOpen(true)}} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-2"><Edit2 className="w-3 h-3"/> Edit HOD</button>
+                                            <button onClick={() => setIsMoveMemberModalOpen(true)} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 flex items-center gap-2"><ArrowRightLeft className="w-3 h-3"/> Move Members</button>
+                                        </div>
+                                    </div>
+                                    <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {employees.filter(e => e.department === selectedDepartment).map(emp => (
+                                            <div key={emp.id} className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">{emp.firstName.charAt(0)}</div>
+                                                <div>
+                                                    <div className="text-sm font-bold dark:text-white">{emp.firstName} {emp.lastName}</div>
+                                                    <div className="text-xs text-slate-500">{emp.email}</div>
+                                                </div>
+                                                <div className="ml-auto">
+                                                    {emp.undertakingReceived ? <CheckCircle2 className="w-5 h-5 text-emerald-500"/> : <Clock className="w-5 h-5 text-amber-500"/>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {employees.filter(e => e.department === selectedDepartment).length === 0 && <p className="text-slate-400 italic text-sm">No members found.</p>}
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-xl font-bold dark:text-white">Department Overview</h3>
+                                        <button onClick={() => setIsDeptModalOpen(true)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center gap-2"><FolderPlus className="w-4 h-4"/> Create Department</button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        {Object.entries(stats.departments).map(([name, data]) => (
+                                            <div key={name} onClick={() => setSelectedDepartment(name)} className="p-6 bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer group">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-blue-600 font-bold text-xl group-hover:scale-110 transition-transform">{name.charAt(0)}</div>
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${data.compliant === data.total ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{data.total} Staff</span>
+                                                </div>
+                                                <h4 className="font-bold text-lg dark:text-white mb-2 truncate">{name}</h4>
+                                                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-2">
+                                                    <div style={{width: `${(data.compliant/data.total)*100}%`}} className="bg-blue-500 h-full"></div>
+                                                </div>
+                                                <div className="flex justify-between text-xs text-slate-500">
+                                                    <span>{Math.round((data.compliant/data.total)*100) || 0}% Done</span>
+                                                    <span className="text-blue-600 font-bold group-hover:underline">Manage &rarr;</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
 
                     {activeView === 'audit' && (
-                         <div className="space-y-4">
+                         <div className="max-w-4xl mx-auto space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
                             {auditLogs.map((log, i) => (
-                                <div key={i} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                                    <div>
-                                        <div className="font-bold text-sm dark:text-white">{log.action}</div>
-                                        <div className="text-xs text-slate-500">{log.details}</div>
+                                <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-300 group-[.is-active]:bg-blue-500 text-slate-500 group-[.is-active]:text-emerald-50 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                        <History className="w-5 h-5"/>
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-[10px] font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300">{log.user}</div>
-                                        <div className="text-[10px] text-slate-400 font-mono mt-1">{formatDate(log.timestamp)}</div>
+                                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+                                        <div className="flex items-center justify-between space-x-2 mb-1">
+                                            <div className="font-bold text-slate-900 dark:text-white">{log.action}</div>
+                                            <time className="font-mono text-xs text-slate-500">{formatDate(log.timestamp)}</time>
+                                        </div>
+                                        <div className="text-slate-500 text-xs">{log.details}</div>
+                                        <div className="mt-2 text-[10px] uppercase font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded">User: {log.user}</div>
                                     </div>
                                 </div>
                             ))}
+                            {auditLogs.length === 0 && <div className="text-center p-10 text-slate-400">No logs found yet.</div>}
                          </div>
                     )}
                  </>
@@ -726,6 +812,81 @@ const App = () => {
               </div>
           </div>
       )}
+
+      {/* MODAL: CREATE DEPT */}
+      {isDeptModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-6">
+                  <h3 className="text-lg font-black mb-4 dark:text-white">Create Department</h3>
+                  <div className="space-y-4">
+                      <input placeholder="Department Name" value={deptFormData.name} onChange={(e) => setDeptFormData({...deptFormData, name: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      <div className="relative">
+                          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400"/><input placeholder="Search unassigned staff..." value={deptSearchTerm} onChange={(e) => setDeptSearchTerm(e.target.value)} className="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl p-2">
+                          {unassignedEmployees.map(emp => (
+                              <label key={emp.id} className="flex items-center gap-2 p-2 hover:bg-white dark:hover:bg-slate-700 rounded cursor-pointer">
+                                  <input type="checkbox" onChange={(e) => {
+                                      if(e.target.checked) setDeptFormData(p => ({...p, selectedEmps: [...p.selectedEmps, emp.id]}));
+                                      else setDeptFormData(p => ({...p, selectedEmps: p.selectedEmps.filter(id => id !== emp.id)}));
+                                  }} />
+                                  <span className="text-xs font-bold dark:text-white">{emp.firstName} {emp.lastName}</span>
+                              </label>
+                          ))}
+                      </div>
+                      <button onClick={handleCreateDepartment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">Create</button>
+                      <button onClick={() => setIsDeptModalOpen(false)} className="w-full py-2 text-slate-500 font-bold text-xs">Cancel</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL: EDIT HOD */}
+      {isDeptEditModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl p-6">
+                  <h3 className="text-lg font-black mb-4 dark:text-white">Edit HOD Details</h3>
+                  <div className="space-y-4">
+                      <input placeholder="HOD Name" value={deptMetaForm.hodName} onChange={(e) => setDeptMetaForm({...deptMetaForm, hodName: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      <input placeholder="HOD Email" value={deptMetaForm.hodEmail} onChange={(e) => setDeptMetaForm({...deptMetaForm, hodEmail: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      <input placeholder="HOD Phone" value={deptMetaForm.hodPhone} onChange={(e) => setDeptMetaForm({...deptMetaForm, hodPhone: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      <button onClick={handleUpdateDeptMeta} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">Save Details</button>
+                      <button onClick={() => setIsDeptEditModalOpen(false)} className="w-full py-2 text-slate-500 font-bold text-xs">Cancel</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL: MOVE MEMBERS */}
+      {isMoveMemberModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-6">
+                  <h3 className="text-lg font-black mb-2 dark:text-white">Move Members</h3>
+                  <p className="text-xs text-slate-500 mb-4">Moving to: <span className="font-bold text-blue-600">{selectedDepartment}</span></p>
+                  <div className="space-y-4">
+                      <div className="relative">
+                          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400"/><input placeholder="Search employees..." value={moveSearchTerm} onChange={(e) => setMoveSearchTerm(e.target.value)} className="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl font-bold outline-none" />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-xl p-2">
+                          {employees.filter(e => e.department !== selectedDepartment && (e.email.toLowerCase().includes(moveSearchTerm) || e.firstName.toLowerCase().includes(moveSearchTerm))).map(emp => (
+                              <label key={emp.id} className="flex items-center gap-2 p-2 hover:bg-white dark:hover:bg-slate-700 rounded cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0">
+                                  <input type="checkbox" onChange={(e) => {
+                                      if(e.target.checked) setSelectedMoveEmps(p => [...p, emp.id]);
+                                      else setSelectedMoveEmps(p => p.filter(id => id !== emp.id));
+                                  }} />
+                                  <div className="flex-1">
+                                      <div className="text-xs font-bold dark:text-white">{emp.firstName} {emp.lastName}</div>
+                                      <div className="text-[10px] text-slate-500">{emp.department}</div>
+                                  </div>
+                              </label>
+                          ))}
+                      </div>
+                      <div className="flex justify-between items-center"><span className="text-xs font-bold text-blue-600">{selectedMoveEmps.length} selected</span><div className="flex gap-2"><button onClick={() => setIsMoveMemberModalOpen(false)} className="px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-100 rounded-lg">Cancel</button><button onClick={handleMoveEmployees} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-xs">Move Selected</button></div></div>
+                  </div>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 };
