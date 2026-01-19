@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import './index.css';
-import * as XLSX from 'xlsx';
-import Confetti from 'react-confetti'; // Fancy Animation
+import Confetti from 'react-confetti'; 
 import aiimsLogo from './assets/logo.png';
 
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInWithEmailAndPassword, // Real Admin Auth
+  signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged 
 } from 'firebase/auth';
@@ -19,7 +18,6 @@ import {
   deleteDoc, 
   onSnapshot, 
   query, 
-  writeBatch,
   addDoc,
   orderBy
 } from 'firebase/firestore';
@@ -27,9 +25,9 @@ import {
   Users, CheckCircle2, Plus, Search, 
   UploadCloud, AlertTriangle, ChevronLeft, 
   ChevronRight, Phone, UserCircle, ChevronDown, 
-  LayoutDashboard, History, Bell, Menu, TrendingUp, Clock, Settings, Eye, Lock,
-  ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Download, Building2,
-  Moon, Sun, LogOut, KeyRound, FileCheck, XCircle, Loader2
+  LayoutDashboard, History, Bell, Menu, TrendingUp, Settings, Eye, Lock,
+  ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
+  Moon, Sun, LogOut, KeyRound, XCircle, Loader2
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -48,8 +46,6 @@ const db = getFirestore(app);
 const appId = 'aiims-default'; 
 
 // --- Helper Components ---
-
-// 1. Skeleton Loader (The "Fancy" Loading State)
 const TableSkeleton = () => (
   <div className="animate-pulse space-y-4">
     {[1, 2, 3, 4, 5].map((i) => (
@@ -58,7 +54,6 @@ const TableSkeleton = () => (
   </div>
 );
 
-// 2. Date Formatter
 const formatDate = (isoString) => {
     if (!isoString) return 'N/A';
     try {
@@ -71,7 +66,7 @@ const formatDate = (isoString) => {
 
 const App = () => {
   // --- AUTH & USER STATE ---
-  const [adminUser, setAdminUser] = useState(null); // Real Firebase Admin User
+  const [adminUser, setAdminUser] = useState(null); 
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -94,10 +89,10 @@ const App = () => {
 
   // --- EMPLOYEE PORTAL STATE ---
   const [empSearchEmail, setEmpSearchEmail] = useState('');
-  const [empSearchMobile, setEmpSearchMobile] = useState(''); // Dual Factor Security
+  const [empSearchMobile, setEmpSearchMobile] = useState(''); 
   const [foundEmployee, setFoundEmployee] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('idle'); 
-  const [showConfetti, setShowConfetti] = useState(false); // Party Time!
+  const [showConfetti, setShowConfetti] = useState(false); 
 
   // --- MODALS & FORMS ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -116,21 +111,19 @@ const App = () => {
   const [deptFormData, setDeptFormData] = useState({ name: '', selectedEmps: [] });
   const [deptMetaForm, setDeptMetaForm] = useState({ hodName: '', hodEmail: '', hodPhone: '' });
   
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRowId, setExpandedRowId] = useState(null); 
   const itemsPerPage = 10;
 
   // --- INIT ---
   useEffect(() => {
-    // Listen for Real Admin Login
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-        setAdminUser(user);
-        if (user) {
-            // Start listening to data ONLY if logged in
+        // Fix: Ignore anonymous users so they don't crash the admin dashboard
+        if (user && !user.isAnonymous) {
+            setAdminUser(user);
             fetchData(); 
         } else {
-            // If logged out, we still need data for the Public Search to work
+            setAdminUser(null);
             fetchData();
         }
     });
@@ -138,18 +131,6 @@ const App = () => {
   }, []);
 
   const fetchData = () => {
-    // Fetch Employees
-    const qEmp = query(collection(db, 'artifacts', appId, 'users', 'global_data', 'undertakings'));
-    // Note: We changed path to 'global_data' to allow public access in future rules, 
-    // but for now we keep it simple. If your old data disappears, change 'global_data' back to user.uid
-    // For this code, I will assume we are using a fixed ID for the "Company" data to allow public search.
-    // *IMPORTANT FIX*: To make public search work, we need a shared collection. 
-    // Since we are migrating, let's keep using the old path logic but allow read.
-    
-    // For simplicity in this specific user case:
-    // We will load data for the "Public" view as well.
-    // In a real app, use a specific Admin ID. 
-    // For now, I will use a hardcoded ID for the "Organization" data bucket.
     const ORG_ID = "aiims_raipur_main_db"; 
 
     const qEmpReal = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings'));
@@ -206,10 +187,9 @@ const App = () => {
       } catch (err) { console.error("Log Error:", err); }
   };
 
-  // --- EMPLOYEE PORTAL LOGIC (SECURE) ---
+  // --- EMPLOYEE PORTAL LOGIC ---
   const handleEmployeeSearch = (e) => {
       e.preventDefault();
-      // SECURITY CHECK: Require Email AND Mobile (Last 4 digits or full)
       const emp = employees.find(e => e.email.toLowerCase() === empSearchEmail.toLowerCase().trim());
       
       if(!emp) {
@@ -217,8 +197,6 @@ const App = () => {
           return;
       }
 
-      // Simple Security Check (In real app, use OTP)
-      // Here we check if the mobile number matches the record
       if (emp.mobile && empSearchMobile && emp.mobile.includes(empSearchMobile)) {
           setFoundEmployee(emp);
           setUploadStatus('idle');
@@ -231,20 +209,18 @@ const App = () => {
       const file = e.target.files[0];
       if(!file || !foundEmployee) return;
 
-      // 1. FILE SECURITY CHECK
       const validTypes = ['application/pdf', 'image/jpeg', 'image/png'];
       if (!validTypes.includes(file.type)) {
           alert("Security Alert: Only PDF, JPG, and PNG files are allowed.");
           return;
       }
-      if (file.size > 5 * 1024 * 1024) { // 5MB Limit
+      if (file.size > 5 * 1024 * 1024) { 
           alert("File is too large. Max size is 5MB.");
           return;
       }
 
       setUploadStatus('uploading');
       
-      // Simulate Upload (Replace with Storage logic later)
       setTimeout(async () => {
           try {
               const ORG_ID = "aiims_raipur_main_db";
@@ -254,7 +230,7 @@ const App = () => {
                   undertakingReceived: true,
                   receivedDate: new Date().toISOString().split('T')[0],
                   status: 'Accepted',
-                  fileURL: 'simulated_secure_url.pdf', // Placeholder
+                  fileURL: 'simulated_secure_url.pdf',
                   updatedAt: new Date().toISOString()
               }, { merge: true });
 
@@ -262,7 +238,7 @@ const App = () => {
               
               setUploadStatus('success');
               setShowConfetti(true);
-              setTimeout(() => setShowConfetti(false), 8000); // Stop confetti after 8s
+              setTimeout(() => setShowConfetti(false), 8000); 
           } catch (err) {
               console.error(err);
               setUploadStatus('error');
@@ -295,7 +271,6 @@ const App = () => {
     const ORG_ID = "aiims_raipur_main_db";
     const docId = formData.email || `unknown_${Date.now()}`;
     
-    // Auto-calculate status
     let status = 'Pending';
     if(formData.notificationSent) status = 'Notified';
     if(formData.undertakingReceived) status = 'Accepted';
@@ -313,8 +288,6 @@ const App = () => {
 
   const handleClearDatabase = async () => {
     if (!adminUser || !window.confirm("⚠️ SECURITY WARNING: This will WIPE ALL DATA. Type 'CONFIRM' to proceed.")) return;
-    // For safety, I'm disabling the actual delete in this code block unless you really want it.
-    // Instead, let's just log it.
     alert("Safety Lock: Bulk delete disabled in this version for security.");
   };
   
@@ -328,7 +301,6 @@ const App = () => {
         <div className={`flex items-center justify-center min-h-screen relative overflow-hidden ${darkMode ? 'dark bg-gray-900' : 'bg-slate-50'}`}>
              {showConfetti && <Confetti numberOfPieces={200} recycle={false} />}
              
-             {/* Background Decoration */}
              <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-600 to-blue-500 rounded-b-[50px] shadow-2xl z-0"></div>
 
              <div className="absolute top-4 right-4 flex gap-2 z-10">
@@ -377,7 +349,7 @@ const App = () => {
                              <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">Authenticated User</h3>
                              <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-full flex items-center justify-center text-xl font-black text-blue-600 shadow-sm border border-slate-100 dark:border-slate-600">
-                                    {foundEmployee.firstName.charAt(0)}
+                                    {(foundEmployee.firstName || '?').charAt(0)}
                                 </div>
                                 <div>
                                     <p className="text-lg font-black text-slate-800 dark:text-white leading-tight">{foundEmployee.firstName} {foundEmployee.lastName}</p>
@@ -425,7 +397,6 @@ const App = () => {
                  )}
              </div>
 
-             {/* ADMIN LOGIN MODAL (SECURE) */}
              {showAdminLogin && (
                  <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
                      <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl w-full max-w-sm relative animate-in zoom-in-95 duration-200 border border-slate-100 dark:border-slate-700">
@@ -486,7 +457,7 @@ const App = () => {
 
             <div className="p-4 border-t border-slate-100 dark:border-slate-800">
                <button onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-900 text-white shadow-lg hover:bg-slate-800">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">{adminUser.email.charAt(0).toUpperCase()}</div>
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">{adminUser?.email ? adminUser.email.charAt(0).toUpperCase() : 'A'}</div>
                   <div className="flex-1 overflow-hidden text-left"><p className="text-xs font-bold truncate">Admin</p><p className="text-[9px] text-slate-400">Online</p></div>
                   <Settings className="w-4 h-4 text-slate-400" />
                </button>
