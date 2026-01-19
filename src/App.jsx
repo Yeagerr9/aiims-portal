@@ -30,7 +30,7 @@ import {
   LayoutDashboard, History, Bell, TrendingUp, Settings, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
   Moon, Sun, LogOut, XCircle, Loader2, Download, FileBarChart, Zap,
-  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, User
+  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -53,7 +53,7 @@ const ORG_ID = "aiims_raipur_main_db";
 const TableSkeleton = () => (
   <div className="animate-pulse space-y-3">
     {[1, 2, 3, 4, 5].map((i) => (
-      <div key={i} className="h-14 bg-white/50 dark:bg-white/5 rounded-2xl w-full backdrop-blur-sm"></div>
+      <div key={i} className="h-16 bg-slate-200/50 dark:bg-white/5 rounded-2xl w-full backdrop-blur-sm"></div>
     ))}
   </div>
 );
@@ -82,7 +82,7 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [darkMode, setDarkMode] = useState(true); // Default to Dark for Pitch Black vibe
+  const [darkMode, setDarkMode] = useState(true); 
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedDepartment, setSelectedDepartment] = useState(null); 
   const [viewOnlyMode, setViewOnlyMode] = useState(false);
@@ -392,56 +392,63 @@ const App = () => {
   const currentItems = filteredEmployees.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
 
+  // --- UI CONSTANTS ---
+  const glassClass = darkMode 
+    ? "bg-white/5 border border-white/10 text-white backdrop-blur-xl shadow-lg hover:bg-white/10"
+    : "bg-white/70 border border-white/50 text-slate-800 backdrop-blur-xl shadow-lg hover:bg-white/90";
+  
+  const bgClass = darkMode
+    ? "bg-black text-white"
+    : "bg-[#eef2f6] text-slate-900"; // Pastel grey-blue for better glass visibility
+
   // === RENDER ===
   if (!adminUser) {
       return (
-        <div className={`flex items-center justify-center min-h-screen relative overflow-hidden ${darkMode ? 'bg-black text-white' : 'bg-slate-50 text-slate-900'} transition-colors duration-500`}>
+        <div className={`flex items-center justify-center min-h-screen relative overflow-hidden ${bgClass} transition-colors duration-500`}>
              {showConfetti && <Confetti numberOfPieces={200} recycle={false} />}
              
-             {/* Liquid Glass Background Elements */}
-             <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/30 rounded-full blur-[120px] animate-pulse"></div>
-             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[100px]"></div>
+             {/* Liquid Gradient Orbs */}
+             <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-500/20 rounded-full blur-[150px] animate-pulse"></div>
+             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/20 rounded-full blur-[150px]"></div>
 
              <div className="absolute top-6 right-6 flex gap-3 z-20">
-                 <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg hover:scale-110 transition-transform">
+                 <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-full ${glassClass} transition-transform hover:scale-110`}>
                     {darkMode ? <Sun className="w-5 h-5 text-amber-300"/> : <Moon className="w-5 h-5 text-indigo-600"/>}
                  </button>
-                 <button onClick={() => setShowAdminLogin(true)} className="flex items-center gap-2 px-5 py-3 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full text-xs font-bold hover:bg-white/20 shadow-lg transition-all hover:scale-105">
-                    <Lock className="w-4 h-4"/> Admin Access
+                 <button onClick={() => setShowAdminLogin(true)} className={`flex items-center gap-2 px-5 py-3 rounded-full text-xs font-bold transition-all hover:scale-105 ${glassClass}`}>
+                    <Lock className="w-4 h-4"/> Admin
                  </button>
              </div>
 
-             <div className="w-full max-w-lg p-10 mx-4 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[3rem] shadow-[0_8px_32px_0_rgba(31,38,135,0.37)] relative z-10 animate-in fade-in zoom-in duration-700">
+             <div className={`w-full max-w-lg p-10 mx-4 rounded-[3rem] shadow-2xl relative z-10 animate-in fade-in zoom-in duration-700 ${glassClass}`}>
                  <div className="flex flex-col items-center text-center mb-10">
-                     <div className="w-28 h-28 bg-white/10 rounded-full shadow-2xl p-5 mb-6 flex items-center justify-center border border-white/20 backdrop-blur-md">
-                        <img src={aiimsLogo} alt="AIIMS" className="w-full h-full object-contain drop-shadow-lg" />
+                     <div className={`w-28 h-28 rounded-full shadow-xl p-5 mb-6 flex items-center justify-center ${darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-blue-100'}`}>
+                        <img src={aiimsLogo} alt="AIIMS" className="w-full h-full object-contain" />
                      </div>
-                     <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">AIIMS Raipur</h1>
-                     <div className="px-4 py-1 bg-white/5 rounded-full border border-white/10">
-                        <p className="text-xs font-bold text-white/70 uppercase tracking-[0.2em]">Secure Compliance Portal</p>
-                     </div>
+                     <h1 className="text-3xl font-black mb-1 text-center">AIIMS Raipur</h1>
+                     <p className={`text-sm font-bold uppercase tracking-widest ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>Compliance Portal</p>
                  </div>
 
                  {showPublicList ? (
                      <div className="animate-in slide-in-from-right duration-300">
                          <div className="flex items-center justify-between mb-6">
-                             <h3 className="font-bold text-lg text-white">Public Status List</h3>
-                             <button onClick={() => setShowPublicList(false)} className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors">Back to Search</button>
+                             <h3 className="font-bold text-lg">Public Status List</h3>
+                             <button onClick={() => setShowPublicList(false)} className="text-xs font-bold text-blue-500 hover:underline">Back</button>
                          </div>
-                         <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden max-h-96 overflow-y-auto custom-scrollbar">
+                         <div className={`rounded-3xl border overflow-hidden max-h-96 overflow-y-auto ${darkMode ? 'border-white/10 bg-black/20' : 'border-slate-200 bg-white/50'}`}>
                              <table className="w-full text-left text-xs">
-                                 <thead className="bg-white/10 text-white/50 font-bold uppercase sticky top-0 backdrop-blur-md">
-                                     <tr><th className="p-4">Name</th><th className="p-4">Department</th><th className="p-4 text-right">Status</th></tr>
+                                 <thead className={`${darkMode ? 'bg-white/10 text-white/50' : 'bg-slate-100 text-slate-500'} font-bold uppercase sticky top-0 backdrop-blur-md`}>
+                                     <tr><th className="p-4">Name</th><th className="p-4">Dept</th><th className="p-4 text-right">Status</th></tr>
                                  </thead>
-                                 <tbody className="divide-y divide-white/5">
+                                 <tbody className={`divide-y ${darkMode ? 'divide-white/10' : 'divide-slate-200'}`}>
                                      {employees.map(emp => (
                                          <tr key={emp.id} className="hover:bg-white/5 transition-colors">
-                                             <td className="p-4 font-bold text-white">{emp.firstName} {emp.lastName}</td>
-                                             <td className="p-4 text-white/60">{emp.department}</td>
+                                             <td className="p-4 font-bold">{emp.firstName} {emp.lastName}</td>
+                                             <td className={`p-4 ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>{emp.department}</td>
                                              <td className="p-4 text-right">
                                                  {emp.undertakingReceived ? 
-                                                    <span className="text-emerald-400 font-bold drop-shadow-md">Received</span> : 
-                                                    <span className="text-amber-400 font-bold opacity-60">Pending</span>
+                                                    <span className="text-emerald-500 font-bold">Received</span> : 
+                                                    <span className="text-amber-500 font-bold">Pending</span>
                                                  }
                                              </td>
                                          </tr>
@@ -456,59 +463,59 @@ const App = () => {
                             <form onSubmit={handleEmployeeSearch} className="space-y-6">
                                 <div className="space-y-4">
                                     <div className="relative group">
-                                        <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50 group-focus-within:text-blue-400 transition-colors" />
-                                        <input type="email" placeholder="Enter Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className="w-full pl-14 pr-6 py-5 bg-black/20 border border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/50 font-bold text-white placeholder-white/30 transition-all shadow-inner" required />
+                                        <Mail className={`absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${darkMode ? 'text-white/50' : 'text-slate-400'}`} />
+                                        <input type="email" placeholder="Official Email ID" value={empSearchEmail} onChange={(e) => setEmpSearchEmail(e.target.value)} className={`w-full pl-14 pr-6 py-5 rounded-2xl outline-none font-bold transition-all shadow-inner border ${darkMode ? 'bg-black/20 border-white/10 text-white focus:ring-blue-500/50' : 'bg-white border-slate-200 text-slate-900 focus:ring-blue-200'}`} required />
                                     </div>
                                 </div>
-                                <button type="submit" className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-lg shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3">
+                                <button type="submit" className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
                                     Check Status <ArrowLeft className="w-5 h-5 rotate-180"/>
                                 </button>
-                                <button type="button" onClick={() => setShowPublicList(true)} className="w-full py-3 text-white/50 text-xs font-bold hover:text-white flex items-center justify-center gap-2 transition-colors">
-                                    <List className="w-4 h-4"/> View Public Compliance List
+                                <button type="button" onClick={() => setShowPublicList(true)} className={`w-full py-3 text-xs font-bold flex items-center justify-center gap-2 ${darkMode ? 'text-white/50 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`}>
+                                    <List className="w-4 h-4"/> View Public List
                                 </button>
                             </form>
                         ) : (
                             <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
-                                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 text-left relative overflow-hidden group">
-                                    <button onClick={() => {setFoundEmployee(null); setUploadStatus('idle');}} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"><LogOut className="w-5 h-5 text-white/60"/></button>
-                                    <h3 className="text-[10px] font-bold uppercase text-blue-400 tracking-wider mb-3">Authenticated User</h3>
+                                <div className={`p-6 rounded-3xl border text-left relative overflow-hidden group ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-white'}`}>
+                                    <button onClick={() => {setFoundEmployee(null); setUploadStatus('idle');}} className="absolute top-4 right-4 p-2 rounded-full hover:bg-black/5 transition-colors"><LogOut className="w-5 h-5 opacity-60"/></button>
+                                    <h3 className="text-[10px] font-bold uppercase text-blue-500 tracking-wider mb-3">Authenticated User</h3>
                                     <div className="flex items-center gap-5">
                                         <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg">
                                             {(foundEmployee.firstName || '?').charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-xl font-black text-white leading-tight">{foundEmployee.firstName} {foundEmployee.lastName}</p>
-                                            <p className="text-sm text-white/60 font-medium mt-1">{foundEmployee.email}</p>
+                                            <p className="text-xl font-black leading-tight">{foundEmployee.firstName} {foundEmployee.lastName}</p>
+                                            <p className="text-sm opacity-60 font-medium mt-1">{foundEmployee.email}</p>
                                         </div>
                                     </div>
                                     <div className="mt-6">
-                                        <div className={`py-3 rounded-xl text-xs font-bold uppercase text-center border backdrop-blur-md ${foundEmployee.undertakingReceived ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/20 border-amber-500/30 text-amber-300'}`}>
+                                        <div className={`py-3 rounded-xl text-xs font-bold uppercase text-center border backdrop-blur-md ${foundEmployee.undertakingReceived ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
                                             {foundEmployee.undertakingReceived ? '✅ Compliance Verified' : '⚠️ Action Required'}
                                         </div>
                                     </div>
                                 </div>
 
                                 {uploadStatus === 'success' || foundEmployee.undertakingReceived ? (
-                                    <div className="text-center py-8 bg-emerald-500/10 rounded-3xl border border-emerald-500/20 relative overflow-hidden group hover:bg-emerald-500/20 transition-colors">
-                                        <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-bounce">
+                                    <div className="text-center py-8 bg-emerald-500/10 rounded-3xl border border-emerald-500/20 relative overflow-hidden">
+                                        <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg animate-bounce">
                                             <CheckCircle2 className="w-10 h-10"/>
                                         </div>
-                                        <h3 className="text-2xl font-black text-white mb-1">You are Compliant!</h3>
-                                        <p className="text-sm text-emerald-200/80 px-6">Your undertaking has been securely encrypted and filed.</p>
+                                        <h3 className="text-2xl font-black mb-1">You are Compliant!</h3>
+                                        <p className="text-sm opacity-70 px-6">Your undertaking has been securely filed.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        <div className={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 ${uploadStatus === 'uploading' ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/20 hover:border-blue-400 hover:bg-white/5 cursor-pointer group hover:scale-[1.02]'}`}>
+                                        <div className={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 ${uploadStatus === 'uploading' ? 'border-blue-500 bg-blue-500/5' : 'border-current opacity-60 hover:opacity-100 hover:border-blue-500 cursor-pointer hover:scale-[1.02]'}`}>
                                             {uploadStatus === 'uploading' ? (
-                                                <div className="flex flex-col items-center"><Loader2 className="w-12 h-12 text-blue-400 animate-spin mb-4"/><p className="text-sm font-bold text-blue-300">Encrypting & Uploading...</p></div>
+                                                <div className="flex flex-col items-center"><Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4"/><p className="text-sm font-bold text-blue-500">Uploading...</p></div>
                                             ) : (
                                                 <label className="cursor-pointer block">
                                                     <input type="file" accept=".pdf,.jpg,.png" onChange={handleEmployeeUpload} className="hidden" />
-                                                    <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4 text-white group-hover:scale-110 transition-transform group-hover:bg-blue-500 group-hover:shadow-[0_0_30px_rgba(59,130,246,0.5)]">
+                                                    <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
                                                         <UploadCloud className="w-8 h-8" />
                                                     </div>
-                                                    <p className="text-lg font-bold text-white mb-1">Upload Signed Undertaking</p>
-                                                    <p className="text-xs text-white/40">PDF, JPG or PNG (Max 5MB)</p>
+                                                    <p className="text-lg font-bold mb-1">Upload Signed Undertaking</p>
+                                                    <p className="text-xs opacity-50">PDF, JPG or PNG (Max 5MB)</p>
                                                 </label>
                                             )}
                                         </div>
@@ -520,29 +527,18 @@ const App = () => {
                  )}
              </div>
 
-             {/* ADMIN LOGIN MODAL */}
              {showAdminLogin && (
                  <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-                     <div className="bg-[#0a0a0a] border border-white/10 p-10 rounded-[2.5rem] shadow-2xl w-full max-w-sm relative animate-in zoom-in-95 duration-300">
-                         <button onClick={() => setShowAdminLogin(false)} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"><XCircle className="w-8 h-8"/></button>
+                     <div className={`p-10 rounded-[2.5rem] shadow-2xl w-full max-w-sm relative animate-in zoom-in-95 duration-300 ${glassClass}`}>
+                         <button onClick={() => setShowAdminLogin(false)} className="absolute top-6 right-6 opacity-50 hover:opacity-100"><XCircle className="w-8 h-8"/></button>
                          <div className="flex flex-col items-center mb-8">
-                             <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4 border border-white/10 shadow-lg"><Lock className="w-8 h-8 text-white"/></div>
-                             <h2 className="text-2xl font-black text-white">Admin Console</h2>
-                             <p className="text-xs text-white/40 font-bold tracking-widest uppercase mt-1">Authorized Access Only</p>
+                             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 border border-white/20 shadow-lg bg-gradient-to-br from-white/10 to-transparent"><Lock className="w-8 h-8"/></div>
+                             <h2 className="text-2xl font-black">Admin Console</h2>
                          </div>
-                         
-                         {authError && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 text-red-200 text-xs font-bold rounded-xl flex items-center gap-3"><AlertTriangle className="w-5 h-5"/> {authError}</div>}
-
                          <form onSubmit={handleAdminLogin} className="space-y-5">
-                             <div className="space-y-1">
-                                 <label className="text-[10px] font-bold uppercase text-white/50 ml-2">Email</label>
-                                 <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/50 text-white placeholder-white/20 transition-all" placeholder="admin@aiims.edu" autoFocus />
-                             </div>
-                             <div className="space-y-1">
-                                 <label className="text-[10px] font-bold uppercase text-white/50 ml-2">Password</label>
-                                 <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/50 text-white placeholder-white/20 transition-all" placeholder="••••••••" />
-                             </div>
-                             <button type="submit" className="w-full py-4 bg-white text-black rounded-2xl font-bold hover:bg-gray-200 hover:scale-[1.02] transition-transform shadow-xl">Unlock Dashboard</button>
+                             <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className={`w-full px-5 py-4 rounded-2xl font-bold outline-none border focus:ring-2 focus:ring-blue-500/50 ${darkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-200 text-black'}`} placeholder="Email" autoFocus />
+                             <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className={`w-full px-5 py-4 rounded-2xl font-bold outline-none border focus:ring-2 focus:ring-blue-500/50 ${darkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-200 text-black'}`} placeholder="Password" />
+                             <button type="submit" className="w-full py-4 bg-white text-black rounded-2xl font-bold hover:scale-[1.02] transition-transform shadow-xl">Unlock</button>
                          </form>
                      </div>
                  </div>
@@ -551,54 +547,47 @@ const App = () => {
       );
   }
 
-  // === ADMIN DASHBOARD (Pitch Black Glass) ===
+  // === ADMIN DASHBOARD ===
   return (
-    <div className={`flex h-screen w-full overflow-hidden ${darkMode ? 'bg-black text-white' : 'bg-slate-50 text-slate-900'} transition-colors duration-500`}>
+    <div className={`flex h-screen w-full overflow-hidden ${bgClass} transition-colors duration-500`}>
       
-      {/* Background Ambience */}
-      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[150px]"></div>
-          <div className="absolute bottom-[10%] left-[10%] w-[30%] h-[30%] bg-indigo-900/20 rounded-full blur-[150px]"></div>
+      {/* Ambient Background */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden opacity-50">
+          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[150px]"></div>
+          <div className="absolute bottom-[10%] left-[10%] w-[30%] h-[30%] bg-purple-500/20 rounded-full blur-[150px]"></div>
       </div>
 
-      {/* FLOATING GLASS DOCK (TASKBAR) */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-2 bg-white/10 backdrop-blur-2xl border border-white/20 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-10 duration-700">
-          <button onClick={() => {setActiveView('dashboard'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'dashboard' ? 'bg-white text-black scale-110 shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>
-              <LayoutDashboard className="w-6 h-6" />
+      {/* FLOATING GLASS DOCK */}
+      <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-2 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom-10 duration-700 ${glassClass}`}>
+          <button onClick={() => {setActiveView('dashboard'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'dashboard' ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'opacity-60 hover:opacity-100'}`}><LayoutDashboard className="w-6 h-6" /></button>
+          <button onClick={() => {setActiveView('registry'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'registry' ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'opacity-60 hover:opacity-100'}`}><List className="w-6 h-6" /></button>
+          <button onClick={() => {setActiveView('departments'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'departments' ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'opacity-60 hover:opacity-100'}`}><Building2 className="w-6 h-6" /></button>
+          <button onClick={() => {setActiveView('audit'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'audit' ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'opacity-60 hover:opacity-100'}`}><History className="w-6 h-6" /></button>
+          <div className="w-px h-8 bg-current opacity-20 mx-2"></div>
+          <button onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)} className="p-2 pr-4 rounded-full bg-black/5 flex items-center gap-3 hover:bg-black/10 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center font-bold text-white text-xs">{adminUser?.email ? adminUser.email.charAt(0).toUpperCase() : 'A'}</div>
+              <span className="text-xs font-bold mr-1">Admin</span>
           </button>
-          <button onClick={() => {setActiveView('registry'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'registry' ? 'bg-white text-black scale-110 shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>
-              <List className="w-6 h-6" />
-          </button>
-          <button onClick={() => {setActiveView('departments'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'departments' ? 'bg-white text-black scale-110 shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>
-              <Building2 className="w-6 h-6" />
-          </button>
-          <button onClick={() => {setActiveView('audit'); setSelectedDepartment(null)}} className={`p-4 rounded-full transition-all duration-300 ${activeView === 'audit' ? 'bg-white text-black scale-110 shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>
-              <History className="w-6 h-6" />
-          </button>
-          <div className="w-px h-8 bg-white/10 mx-2"></div>
-          <div className="relative">
-              <button onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)} className="p-2 pr-4 rounded-full bg-black/40 border border-white/10 flex items-center gap-3 hover:bg-black/60 transition-colors">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center font-bold text-xs">{adminUser?.email ? adminUser.email.charAt(0).toUpperCase() : 'A'}</div>
-                  <span className="text-xs font-bold mr-1">Admin</span>
-              </button>
-              {isAdminMenuOpen && (
-                  <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#111] border border-white/10 rounded-2xl p-2 w-48 shadow-2xl flex flex-col gap-1 backdrop-blur-xl">
-                      <button onClick={handleClearDatabase} className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/20 text-xs font-bold text-red-400 transition-colors text-left"><Trash2 className="w-4 h-4"/> Wipe Data</button>
-                      <div className="h-px bg-white/10 my-1"></div>
-                      <button onClick={handleAdminLogout} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 text-xs font-bold text-white transition-colors text-left"><LogOut className="w-4 h-4"/> Logout</button>
-                  </div>
-              )}
-          </div>
+          {isAdminMenuOpen && (
+              <div className={`absolute bottom-full mb-4 left-1/2 -translate-x-1/2 rounded-2xl p-2 w-48 shadow-2xl flex flex-col gap-1 ${glassClass}`}>
+                  <button onClick={handleClearDatabase} className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/10 text-xs font-bold text-red-500 transition-colors text-left"><Trash2 className="w-4 h-4"/> Wipe Data</button>
+                  <div className="h-px bg-current opacity-10 my-1"></div>
+                  <button onClick={handleAdminLogout} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 text-xs font-bold transition-colors text-left"><LogOut className="w-4 h-4"/> Logout</button>
+              </div>
+          )}
       </div>
 
       {/* CONTENT AREA */}
       <main className="flex-1 h-full overflow-y-auto p-8 pb-32 relative z-10 scroll-smooth">
          <header className="flex justify-between items-center mb-8">
-            <div>
-                <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 capitalize mb-1">{activeView}</h1>
-                <p className="text-xs font-bold text-white/40 uppercase tracking-widest">Overview & Management</p>
+            <div className="flex items-center gap-4">
+                <img src={aiimsLogo} className="w-12 h-12 object-contain" />
+                <div>
+                    <h1 className="text-3xl font-black capitalize mb-1">{activeView}</h1>
+                    <p className="text-xs font-bold opacity-50 uppercase tracking-widest">AIIMS Compliance Portal</p>
+                </div>
             </div>
-            <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">{darkMode ? <Sun className="w-5 h-5"/> : <Moon className="w-5 h-5"/>}</button>
+            <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-full ${glassClass} transition-transform hover:scale-110`}>{darkMode ? <Sun className="w-5 h-5 text-amber-300"/> : <Moon className="w-5 h-5 text-indigo-600"/>}</button>
          </header>
 
          {loading ? <TableSkeleton /> : (
@@ -606,52 +595,52 @@ const App = () => {
                 {activeView === 'dashboard' && (
                     <div className="space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <button onClick={() => {setFilterStatus('All'); setActiveView('registry')}} className="p-6 bg-blue-600/20 border border-blue-500/30 rounded-[2rem] text-left hover:bg-blue-600/30 transition-all group backdrop-blur-md">
-                                <h3 className="text-4xl font-black text-white mb-2 group-hover:scale-110 transition-transform origin-left">{stats.total}</h3>
-                                <p className="text-xs font-bold text-blue-300 uppercase tracking-widest">Total Staff</p>
+                            <button onClick={() => {setFilterStatus('All'); setActiveView('registry')}} className={`p-6 rounded-[2.5rem] text-left transition-all group ${glassClass} border-l-4 border-l-blue-500`}>
+                                <h3 className="text-4xl font-black mb-2 group-hover:scale-110 transition-transform origin-left">{stats.total}</h3>
+                                <p className="text-xs font-bold opacity-60 uppercase tracking-widest">Total Staff</p>
                             </button>
-                            <button onClick={() => {setFilterStatus('Accepted'); setActiveView('registry')}} className="p-6 bg-emerald-600/20 border border-emerald-500/30 rounded-[2rem] text-left hover:bg-emerald-600/30 transition-all group backdrop-blur-md">
-                                <h3 className="text-4xl font-black text-white mb-2 group-hover:scale-110 transition-transform origin-left">{stats.accepted}</h3>
-                                <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest">Compliant</p>
+                            <button onClick={() => {setFilterStatus('Accepted'); setActiveView('registry')}} className={`p-6 rounded-[2.5rem] text-left transition-all group ${glassClass} border-l-4 border-l-emerald-500`}>
+                                <h3 className="text-4xl font-black mb-2 group-hover:scale-110 transition-transform origin-left">{stats.accepted}</h3>
+                                <p className="text-xs font-bold opacity-60 uppercase tracking-widest">Compliant</p>
                             </button>
-                            <button onClick={() => {setFilterStatus('Notified'); setActiveView('registry')}} className="p-6 bg-amber-600/20 border border-amber-500/30 rounded-[2rem] text-left hover:bg-amber-600/30 transition-all group backdrop-blur-md">
-                                <h3 className="text-4xl font-black text-white mb-2 group-hover:scale-110 transition-transform origin-left">{stats.notified}</h3>
-                                <p className="text-xs font-bold text-amber-300 uppercase tracking-widest">Notified</p>
+                            <button onClick={() => {setFilterStatus('Notified'); setActiveView('registry')}} className={`p-6 rounded-[2.5rem] text-left transition-all group ${glassClass} border-l-4 border-l-amber-500`}>
+                                <h3 className="text-4xl font-black mb-2 group-hover:scale-110 transition-transform origin-left">{stats.notified}</h3>
+                                <p className="text-xs font-bold opacity-60 uppercase tracking-widest">Notified</p>
                             </button>
-                            <button onClick={() => {setFilterStatus('Pending'); setActiveView('registry')}} className="p-6 bg-red-600/20 border border-red-500/30 rounded-[2rem] text-left hover:bg-red-600/30 transition-all group backdrop-blur-md">
-                                <h3 className="text-4xl font-black text-white mb-2 group-hover:scale-110 transition-transform origin-left">{stats.pending}</h3>
-                                <p className="text-xs font-bold text-red-300 uppercase tracking-widest">Action Req</p>
+                            <button onClick={() => {setFilterStatus('Pending'); setActiveView('registry')}} className={`p-6 rounded-[2.5rem] text-left transition-all group ${glassClass} border-l-4 border-l-red-500`}>
+                                <h3 className="text-4xl font-black mb-2 group-hover:scale-110 transition-transform origin-left">{stats.pending}</h3>
+                                <p className="text-xs font-bold opacity-60 uppercase tracking-widest">Action Req</p>
                             </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 backdrop-blur-md">
-                                <h3 className="font-bold text-white mb-6 flex items-center gap-2"><Zap className="w-5 h-5 text-yellow-400"/> Quick Actions</h3>
+                            <div className={`rounded-[2.5rem] p-8 ${glassClass}`}>
+                                <h3 className="font-bold mb-6 flex items-center gap-2"><Zap className="w-5 h-5 text-yellow-400"/> Quick Actions</h3>
                                 <div className="space-y-3">
-                                    <button onClick={handleExportCSV} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors text-left text-sm font-bold text-white/80">
-                                        <div className="p-2 bg-green-500/20 text-green-400 rounded-lg"><FileBarChart className="w-4 h-4"/></div> Download Report
+                                    <button onClick={handleExportCSV} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-black/5 hover:bg-black/10 transition-colors text-left text-sm font-bold opacity-80">
+                                        <div className="p-2 bg-green-500/20 text-green-500 rounded-lg"><FileBarChart className="w-4 h-4"/></div> Download Report
                                     </button>
-                                    <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors text-left text-sm font-bold text-white/80">
-                                        <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg"><FileSpreadsheet className="w-4 h-4"/></div> Import Data
+                                    <button onClick={() => setIsImportModalOpen(true)} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-black/5 hover:bg-black/10 transition-colors text-left text-sm font-bold opacity-80">
+                                        <div className="p-2 bg-purple-500/20 text-purple-500 rounded-lg"><FileSpreadsheet className="w-4 h-4"/></div> Import Data
                                     </button>
-                                    <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors text-left text-sm font-bold text-white/80">
-                                        <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Plus className="w-4 h-4"/></div> Add Staff
+                                    <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-black/5 hover:bg-black/10 transition-colors text-left text-sm font-bold opacity-80">
+                                        <div className="p-2 bg-blue-500/20 text-blue-500 rounded-lg"><Plus className="w-4 h-4"/></div> Add Staff
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="md:col-span-2 bg-white/5 border border-white/10 rounded-[2.5rem] p-8 backdrop-blur-md flex items-center justify-between">
+                            <div className={`md:col-span-2 rounded-[2.5rem] p-8 flex items-center justify-between ${glassClass}`}>
                                 <div>
-                                    <h3 className="font-bold text-white mb-2 text-xl">Analytics</h3>
-                                    <p className="text-sm text-white/50 mb-6 max-w-xs">Real-time compliance tracking across all departments.</p>
+                                    <h3 className="font-bold mb-2 text-xl">Compliance Analytics</h3>
+                                    <p className="text-sm opacity-50 mb-6 max-w-xs">Real-time status tracking across all departments.</p>
                                     <div className="flex gap-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold text-white/60"><span className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]"></span> Compliant</div>
-                                        <div className="flex items-center gap-2 text-xs font-bold text-white/60"><span className="w-3 h-3 rounded-full bg-white/10"></span> Pending</div>
+                                        <div className="flex items-center gap-2 text-xs font-bold opacity-70"><span className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]"></span> Compliant</div>
+                                        <div className="flex items-center gap-2 text-xs font-bold opacity-70"><span className="w-3 h-3 rounded-full bg-slate-500"></span> Pending</div>
                                     </div>
                                 </div>
-                                <div className="w-40 h-40 rounded-full relative flex items-center justify-center shadow-2xl" style={{background: `conic-gradient(#10b981 ${stats.percentage}%, rgba(255,255,255,0.05) 0)`}}>
-                                    <div className="w-32 h-32 bg-[#0a0a0a] rounded-full flex items-center justify-center">
-                                        <span className="text-3xl font-black text-white">{stats.percentage}%</span>
+                                <div className="w-40 h-40 rounded-full relative flex items-center justify-center shadow-2xl" style={{background: `conic-gradient(#10b981 ${stats.percentage}%, rgba(128,128,128,0.2) 0)`}}>
+                                    <div className={`w-32 h-32 rounded-full flex items-center justify-center ${darkMode ? 'bg-black' : 'bg-slate-50'}`}>
+                                        <span className="text-3xl font-black">{stats.percentage}%</span>
                                     </div>
                                 </div>
                             </div>
@@ -660,17 +649,17 @@ const App = () => {
                 )}
 
                 {activeView === 'registry' && (
-                    <div className="bg-white/5 border border-white/10 rounded-[2.5rem] overflow-hidden backdrop-blur-md shadow-2xl">
+                    <div className={`rounded-[2.5rem] overflow-hidden shadow-2xl ${glassClass}`}>
                         <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between gap-4">
-                            <input className="flex-1 bg-black/20 border border-white/10 rounded-2xl px-6 py-4 font-bold text-sm text-white outline-none focus:bg-black/40 transition-colors" placeholder="Search registry..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            <input className={`flex-1 rounded-2xl px-6 py-4 font-bold text-sm outline-none transition-colors ${darkMode ? 'bg-black/30 focus:bg-black/50 text-white' : 'bg-white focus:bg-white/80 text-black'}`} placeholder="Search registry..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             <div className="flex gap-2">
-                                <button onClick={handleExportCSV} className="px-5 py-2 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-xs hover:bg-white/10 transition-colors">Export</button>
-                                <button onClick={() => setIsImportModalOpen(true)} className="px-5 py-2 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-xs hover:bg-white/10 transition-colors">Import</button>
-                                <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="px-6 py-2 bg-white text-black rounded-xl font-bold text-xs hover:bg-gray-200 transition-colors shadow-lg">Add New</button>
+                                <button onClick={handleExportCSV} className="px-5 py-2 bg-black/5 border border-white/10 rounded-xl font-bold text-xs hover:bg-black/10 transition-colors">Export</button>
+                                <button onClick={() => setIsImportModalOpen(true)} className="px-5 py-2 bg-black/5 border border-white/10 rounded-xl font-bold text-xs hover:bg-black/10 transition-colors">Import</button>
+                                <button onClick={() => {resetForm(); setIsAddModalOpen(true)}} className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-colors shadow-lg">Add New</button>
                             </div>
                         </div>
                         <table className="w-full text-left">
-                            <thead className="bg-white/5 text-xs font-bold text-white/40 uppercase">
+                            <thead className="bg-black/5 text-xs font-bold opacity-50 uppercase">
                                 <tr>
                                     <th className="p-6">Staff</th>
                                     <th className="p-6">Department</th>
@@ -681,37 +670,37 @@ const App = () => {
                             </thead>
                             <tbody className="divide-y divide-white/5">
                                 {currentItems.map(emp => (
-                                    <tr key={emp.id} className="hover:bg-white/5 transition-colors">
+                                    <tr key={emp.id} className="hover:bg-black/5 transition-colors">
                                         <td className="p-6">
-                                            <div className="font-bold text-sm text-white">{emp.firstName} {emp.lastName}</div>
-                                            <div className="text-xs text-white/50">{emp.email}</div>
-                                            <div className="text-[10px] text-white/30 mt-1 font-mono">{emp.mobile || 'N/A'}</div>
+                                            <div className="font-bold text-sm">{emp.firstName} {emp.lastName}</div>
+                                            <div className="text-xs opacity-50">{emp.email}</div>
+                                            <div className="text-[10px] opacity-30 mt-1 font-mono">{emp.mobile || 'N/A'}</div>
                                         </td>
-                                        <td className="p-6 text-xs font-bold text-white/60">{emp.department || 'Unassigned'}</td>
+                                        <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
                                         <td className="p-6 text-center">
                                             {emp.notificationSent ? 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg text-[10px] font-bold">Sent</span> : 
-                                                <span className="text-white/10">-</span>
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg text-[10px] font-bold">Sent</span> : 
+                                                <span className="opacity-20">-</span>
                                             }
                                         </td>
                                         <td className="p-6 text-center">
                                             {emp.undertakingReceived ? 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-bold">Received</span> : 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-[10px] font-bold">Pending</span>
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 rounded-lg text-[10px] font-bold">Received</span> : 
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-500/20 text-red-500 border border-red-500/30 rounded-lg text-[10px] font-bold">Pending</span>
                                             }
                                         </td>
                                         <td className="p-6 text-right">
-                                            <button onClick={() => {setFormData(emp); setEditingId(emp.id); setIsAddModalOpen(true)}} className="text-white/40 hover:text-white p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"><Edit2 className="w-4 h-4"/></button>
+                                            <button onClick={() => {setFormData(emp); setEditingId(emp.id); setIsAddModalOpen(true)}} className="opacity-40 hover:opacity-100 p-2 rounded-lg bg-black/5 hover:bg-black/10 transition-colors"><Edit2 className="w-4 h-4"/></button>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                        <div className="p-6 border-t border-white/5 flex justify-between items-center bg-white/5">
-                            <span className="text-xs font-bold text-white/40">Page {currentPage} of {totalPages}</span>
+                        <div className="p-6 border-t border-white/5 flex justify-between items-center bg-black/5">
+                            <span className="text-xs font-bold opacity-40">Page {currentPage} of {totalPages}</span>
                             <div className="flex gap-2">
-                                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-3 rounded-lg hover:bg-white/10 disabled:opacity-30 text-white"><ChevronLeft className="w-4 h-4"/></button>
-                                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-3 rounded-lg hover:bg-white/10 disabled:opacity-30 text-white"><ChevronRight className="w-4 h-4"/></button>
+                                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-3 rounded-lg hover:bg-black/10 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
+                                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-3 rounded-lg hover:bg-black/10 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
                             </div>
                         </div>
                     </div>
@@ -720,31 +709,31 @@ const App = () => {
                 {activeView === 'departments' && (
                     <div className="space-y-6">
                         {selectedDepartment ? (
-                            <div className="bg-white/5 border border-white/10 rounded-[2.5rem] overflow-hidden backdrop-blur-md animate-in slide-in-from-right duration-500">
-                                <div className="p-8 border-b border-white/10 flex justify-between items-center bg-black/20">
+                            <div className={`rounded-[2.5rem] overflow-hidden animate-in slide-in-from-right duration-500 ${glassClass}`}>
+                                <div className="p-8 border-b border-white/10 flex justify-between items-center bg-black/5">
                                     <div>
-                                        <button onClick={() => setSelectedDepartment(null)} className="text-xs font-bold text-blue-400 mb-3 flex items-center gap-1 hover:text-blue-300 transition-colors"><ArrowLeft className="w-3 h-3"/> All Departments</button>
-                                        <h2 className="text-3xl font-black text-white flex items-center gap-3"><Building2 className="w-8 h-8 text-blue-500"/> {selectedDepartment}</h2>
-                                        <div className="flex gap-6 mt-3 text-xs text-white/50 font-bold uppercase tracking-wider">
+                                        <button onClick={() => setSelectedDepartment(null)} className="text-xs font-bold text-blue-500 mb-3 flex items-center gap-1 hover:underline"><ArrowLeft className="w-3 h-3"/> All Departments</button>
+                                        <h2 className="text-3xl font-black flex items-center gap-3"><Building2 className="w-8 h-8 text-blue-500"/> {selectedDepartment}</h2>
+                                        <div className="flex gap-6 mt-3 text-xs opacity-50 font-bold uppercase tracking-wider">
                                             <span className="flex items-center gap-2"><UserCircle className="w-3 h-3"/> {deptMetadata[selectedDepartment]?.hodName || 'No Head Assigned'}</span>
                                             <span className="flex items-center gap-2"><Phone className="w-3 h-3"/> {deptMetadata[selectedDepartment]?.hodPhone || 'N/A'}</span>
                                         </div>
                                     </div>
                                     <div className="flex gap-3">
-                                        <button onClick={() => {setDeptMetaForm(deptMetadata[selectedDepartment] || {}); setIsDeptEditModalOpen(true)}} className="px-4 py-2 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold hover:bg-white/10 transition-colors">Edit Details</button>
-                                        <button onClick={() => setIsMoveMemberModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/50">Move Members</button>
+                                        <button onClick={() => {setDeptMetaForm(deptMetadata[selectedDepartment] || {}); setIsDeptEditModalOpen(true)}} className="px-4 py-2 bg-black/5 border border-white/10 rounded-xl text-xs font-bold hover:bg-black/10 transition-colors">Edit Details</button>
+                                        <button onClick={() => setIsMoveMemberModalOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-500 transition-colors shadow-lg">Move Members</button>
                                     </div>
                                 </div>
                                 <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {employees.filter(e => e.department === selectedDepartment).map(emp => (
-                                        <div key={emp.id} className="p-5 bg-white/5 border border-white/5 rounded-2xl flex items-center gap-4 hover:bg-white/10 transition-colors group">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-black flex items-center justify-center font-bold text-white shadow-lg border border-white/10">{emp.firstName.charAt(0)}</div>
+                                        <div key={emp.id} className="p-5 bg-black/5 border border-white/5 rounded-2xl flex items-center gap-4 hover:bg-black/10 transition-colors group">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-400 dark:from-gray-700 dark:to-black flex items-center justify-center font-bold text-white shadow-lg">{emp.firstName.charAt(0)}</div>
                                             <div className="overflow-hidden">
-                                                <div className="text-sm font-bold text-white truncate">{emp.firstName} {emp.lastName}</div>
-                                                <div className="text-xs text-white/40 truncate">{emp.email}</div>
+                                                <div className="text-sm font-bold truncate">{emp.firstName} {emp.lastName}</div>
+                                                <div className="text-xs opacity-40 truncate">{emp.email}</div>
                                             </div>
                                             <div className="ml-auto">
-                                                {emp.undertakingReceived ? <CheckCircle2 className="w-5 h-5 text-emerald-400"/> : <Clock className="w-5 h-5 text-amber-400/50"/>}
+                                                {emp.undertakingReceived ? <CheckCircle2 className="w-5 h-5 text-emerald-500"/> : <Clock className="w-5 h-5 text-amber-500 opacity-50"/>}
                                             </div>
                                         </div>
                                     ))}
@@ -753,23 +742,23 @@ const App = () => {
                         ) : (
                             <>
                                 <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold text-white">All Departments</h3>
-                                    <button onClick={() => setIsDeptModalOpen(true)} className="px-5 py-2 bg-white text-black rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors shadow-lg"><FolderPlus className="w-4 h-4 inline mr-2"/>Create New</button>
+                                    <h3 className="text-xl font-bold">All Departments</h3>
+                                    <button onClick={() => setIsDeptModalOpen(true)} className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-lg"><FolderPlus className="w-4 h-4 inline mr-2"/>Create New</button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     {Object.entries(stats.departments).map(([name, data]) => (
-                                        <div key={name} onClick={() => setSelectedDepartment(name)} className="p-6 bg-white/5 border border-white/10 rounded-[2rem] hover:bg-white/10 transition-all cursor-pointer group hover:scale-[1.02] hover:shadow-2xl hover:border-blue-500/30">
+                                        <div key={name} onClick={() => setSelectedDepartment(name)} className={`p-6 rounded-[2rem] hover:bg-white/20 transition-all cursor-pointer group hover:scale-[1.02] ${glassClass}`}>
                                             <div className="flex justify-between items-start mb-6">
-                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-white/10 flex items-center justify-center text-blue-300 font-bold text-2xl group-hover:scale-110 transition-transform">{name.charAt(0)}</div>
-                                                <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${data.compliant === data.total ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/50'}`}>{data.total} Staff</span>
+                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-white/10 flex items-center justify-center text-blue-500 font-bold text-2xl group-hover:scale-110 transition-transform">{name.charAt(0)}</div>
+                                                <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${data.compliant === data.total ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black/5 opacity-50'}`}>{data.total} Staff</span>
                                             </div>
-                                            <h4 className="font-bold text-xl text-white mb-3 truncate">{name}</h4>
-                                            <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden mb-3">
+                                            <h4 className="font-bold text-xl mb-3 truncate">{name}</h4>
+                                            <div className="w-full bg-black/10 h-2 rounded-full overflow-hidden mb-3">
                                                 <div style={{width: `${(data.compliant/data.total)*100}%`}} className="bg-blue-500 h-full shadow-[0_0_10px_#3b82f6]"></div>
                                             </div>
-                                            <div className="flex justify-between text-xs text-white/40 font-bold">
+                                            <div className="flex justify-between text-xs opacity-40 font-bold">
                                                 <span>{Math.round((data.compliant/data.total)*100) || 0}% Compliance</span>
-                                                <span className="text-blue-400 group-hover:underline">Open &rarr;</span>
+                                                <span className="text-blue-500 group-hover:underline">Open &rarr;</span>
                                             </div>
                                         </div>
                                     ))}
@@ -784,14 +773,14 @@ const App = () => {
                         {auditLogs.map((log, i) => (
                             <div key={i} className="flex items-center justify-between w-full">
                                 <div className="w-[45%] text-right pr-8">
-                                    <div className="font-bold text-white text-sm">{log.action}</div>
-                                    <div className="text-xs text-white/40 mt-1">{formatDate(log.timestamp)}</div>
+                                    <div className="font-bold text-sm">{log.action}</div>
+                                    <div className="text-xs opacity-40 mt-1">{formatDate(log.timestamp)}</div>
                                 </div>
                                 <div className="absolute left-1/2 -translate-x-1/2 w-4 h-4 bg-black border-2 border-blue-500 rounded-full shadow-[0_0_10px_#3b82f6] z-10"></div>
                                 <div className="w-[45%] pl-8">
-                                    <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
-                                        <p className="text-xs text-white/70">{log.details}</p>
-                                        <div className="mt-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest">{log.user}</div>
+                                    <div className={`p-4 rounded-xl ${glassClass}`}>
+                                        <p className="text-xs opacity-70">{log.details}</p>
+                                        <div className="mt-2 text-[10px] font-bold text-blue-500 uppercase tracking-widest">{log.user}</div>
                                     </div>
                                 </div>
                             </div>
@@ -805,41 +794,40 @@ const App = () => {
       {/* MODAL: IMPORT EXCEL */}
       {isImportModalOpen && (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-              <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-[2.5rem] p-10 text-center shadow-2xl animate-in zoom-in-95 duration-300">
-                  <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-400 border border-blue-500/20">
+              <div className={`w-full max-w-md rounded-[2.5rem] p-10 text-center shadow-2xl animate-in zoom-in-95 duration-300 ${glassClass}`}>
+                  <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-500 border border-blue-500/20">
                       <UploadCloud className="w-10 h-10" />
                   </div>
-                  <h3 className="text-2xl font-black text-white mb-2">Smart Import</h3>
-                  <p className="text-sm text-white/50 mb-8">Upload your Excel file. We will automatically merge status updates without erasing existing data.</p>
+                  <h3 className="text-2xl font-black mb-2">Smart Import</h3>
+                  <p className="text-sm opacity-50 mb-8">Upload your Excel file. We will automatically merge status updates without erasing existing data.</p>
                   
-                  <label className="block w-full py-12 border-2 border-dashed border-white/10 rounded-3xl cursor-pointer hover:border-blue-500/50 hover:bg-white/5 transition-all group">
+                  <label className="block w-full py-12 border-2 border-dashed border-white/20 rounded-3xl cursor-pointer hover:border-blue-500/50 hover:bg-black/5 transition-all group">
                       <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
-                      <span className="text-sm font-bold text-white/60 group-hover:text-white transition-colors">Click to Select .xlsx File</span>
+                      <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-colors">Click to Select .xlsx File</span>
                   </label>
-                  <button onClick={() => setIsImportModalOpen(false)} className="mt-8 text-white/40 text-xs font-bold hover:text-white uppercase tracking-widest transition-colors">Cancel Operation</button>
+                  <button onClick={() => setIsImportModalOpen(false)} className="mt-8 opacity-40 text-xs font-bold hover:opacity-100 uppercase tracking-widest transition-colors">Cancel Operation</button>
               </div>
           </div>
       )}
 
-      {/* OTHER MODALS (Add/Edit, Dept etc) would follow the same glass styling... */}
-      {/* Kept simple for length limit, but logic is identical to above style */}
+      {/* MODAL: ADD/EDIT */}
       {isAddModalOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-              <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl">
-                  <h3 className="text-xl font-black text-white mb-6">Staff Details</h3>
+              <div className={`w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl ${glassClass}`}>
+                  <h3 className="text-xl font-black mb-6">Staff Details</h3>
                   <form onSubmit={handleSave} className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
-                        <input name="firstName" placeholder="First Name" value={formData.firstName} onChange={handleInputChange} className="p-4 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:border-blue-500/50" />
-                        <input name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleInputChange} className="p-4 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:border-blue-500/50" />
+                        <input name="firstName" placeholder="First Name" value={formData.firstName} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
+                        <input name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                       </div>
-                      <input name="email" placeholder="Email" value={formData.email} onChange={handleInputChange} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:border-blue-500/50" />
+                      <input name="email" placeholder="Email" value={formData.email} onChange={handleInputChange} className={`w-full p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                       <div className="grid grid-cols-2 gap-4">
-                        <input name="department" placeholder="Department" value={formData.department} onChange={handleInputChange} className="p-4 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:border-blue-500/50" />
-                        <input name="mobile" placeholder="Mobile" value={formData.mobile} onChange={handleInputChange} className="p-4 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:border-blue-500/50" />
+                        <input name="department" placeholder="Department" value={formData.department} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
+                        <input name="mobile" placeholder="Mobile" value={formData.mobile} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                       </div>
                       <div className="flex gap-4 pt-4">
-                          <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 bg-white/5 text-white rounded-xl font-bold hover:bg-white/10">Cancel</button>
-                          <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 shadow-lg shadow-blue-900/20">Save</button>
+                          <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 bg-black/10 rounded-xl font-bold hover:bg-black/20">Cancel</button>
+                          <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-500 shadow-lg">Save</button>
                       </div>
                   </form>
               </div>
