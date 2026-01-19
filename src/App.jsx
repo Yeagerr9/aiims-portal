@@ -121,6 +121,10 @@ const App = () => {
   const [moveSearchTerm, setMoveSearchTerm] = useState('');
   const [selectedMoveEmps, setSelectedMoveEmps] = useState([]);
   
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   // --- INIT ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -135,17 +139,14 @@ const App = () => {
   }, []);
 
   const fetchData = () => {
-    // Employees
     const qEmpReal = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings'));
     const unsubEmp = onSnapshot(qEmpReal, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort numerically by SrNo if possible
       data.sort((a, b) => (parseInt(a.srNo) || 999999) - (parseInt(b.srNo) || 999999));
       setEmployees(data);
       setLoading(false);
     });
 
-    // Dept Metadata
     const qDept = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata'));
     const unsubDept = onSnapshot(qDept, (snapshot) => {
         const meta = {};
@@ -153,7 +154,6 @@ const App = () => {
         setDeptMetadata(meta);
     });
 
-    // Logs
     const qLogs = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), orderBy('timestamp', 'desc'));
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -242,7 +242,7 @@ const App = () => {
       } catch (err) { console.error(err); alert("Move failed."); }
   };
 
-  // --- EXCEL IMPORT/EXPORT (RESTORED & FIXED) ---
+  // --- EXCEL IMPORT/EXPORT (FIXED) ---
   const handleExportCSV = () => {
       const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Mobile", "Status", "Undertaking Received", "Notification Sent"];
       const csv = [headers.join(","), ...employees.map(e => 
@@ -271,53 +271,45 @@ const App = () => {
         const batch = writeBatch(db);
         let count = 0;
         
-        // Smart Header Detection
+        // Smart Header Detection (Case Insensitive)
         const headers = jsonData[0].map(h => h?.toString().toLowerCase().trim() || '');
-        const emailIdx = headers.findIndex(h => h.includes('email'));
+        const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('user id')); // Updated to catch "User IDs"
         
         // Detect Status Columns in Excel
-        // If these columns exist in the file, we will update them. 
-        // If not, we will PRESERVE the existing database value.
-        let notifIdx = headers.findIndex(h => h.includes('notification') || h.includes('sent') || h.includes('notified'));
+        let notifIdx = headers.findIndex(h => h.includes('notification') || h.includes('sent') || h.includes('notified') || h.includes('email sent'));
         let underIdx = headers.findIndex(h => h.includes('undertaking') || h.includes('received') || h.includes('compliance'));
         let deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept'));
         let mobileIdx = headers.findIndex(h => h.includes('mobile') || h.includes('phone'));
 
-        // Helper to check for "Yes" or "True" values
         const isTrue = (val) => {
             if (!val) return false;
             const s = val.toString().toLowerCase().trim();
-            return s === 'yes' || s === 'true' || s === 'done' || s === 'sent' || s === 'received';
+            return s === 'yes' || s === 'true' || s === 'done' || s === 'sent' || s === 'received' || s === 'later' || s.length > 2; // "later" counts as notified in your file context
         };
 
-        // Create a Map of existing users for O(1) lookup
         const existingUsers = new Map(employees.map(e => [e.email.toLowerCase(), e]));
 
         jsonData.forEach((row, index) => {
-           if (index === 0) return; 
-           const email = row[emailIdx > -1 ? emailIdx : 3]?.toString().trim();
+           if (index === 0) return; // Skip headers
+           
+           const email = row[emailIdx > -1 ? emailIdx : 3]?.toString().trim(); // Fallback to col 3
 
            if (email && email.includes('@')) {
               const docRef = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', email);
               const existing = existingUsers.get(email.toLowerCase());
 
-              // MERGE LOGIC: New Value OR Old Value (Don't overwrite true with false unless explicit)
-              
-              // 1. Notification Status
-              // If excel has the column, use it. If not, keep old.
-              // If excel says "Yes", force true. If excel is empty/no column, keep old.
+              // 1. Notification Status (Merge)
               let newNotified = existing?.notificationSent || false;
-              if (notifIdx > -1) {
-                  if (isTrue(row[notifIdx])) newNotified = true;
+              if (notifIdx > -1 && row[notifIdx]) {
+                  // If cell has content, mark as notified
+                  newNotified = true; 
               }
 
-              // 2. Undertaking Status
+              // 2. Undertaking Status (Merge)
               let newUndertaking = existing?.undertakingReceived || false;
-              if (underIdx > -1) {
-                  if (isTrue(row[underIdx])) newUndertaking = true;
-              }
+              if (underIdx > -1 && isTrue(row[underIdx])) newUndertaking = true;
 
-              // 3. Department (Update if provided in Excel, else keep old)
+              // 3. Department (Update)
               let newDept = existing?.department || 'Unassigned';
               if (deptIdx > -1 && row[deptIdx]) newDept = row[deptIdx];
 
@@ -328,6 +320,7 @@ const App = () => {
                   email: email,
                   department: newDept,
                   mobile: (mobileIdx > -1 && row[mobileIdx]) ? row[mobileIdx] : (existing?.mobile || ''),
+                  contactPerson: existing?.contactPerson || row[4] || '',
                   
                   // Key Merge Logic:
                   notificationSent: newNotified,
@@ -343,7 +336,7 @@ const App = () => {
 
         await batch.commit();
         await logAction("Bulk Import", `Merged ${count} records from Excel`, 'info');
-        alert(`Success! Merged/Updated ${count} records.\n\nNote: Existing "Received" or "Notified" statuses were preserved unless updated by the file.`);
+        alert(`Success! Merged ${count} records.\n\nNote: Notifications and Undertaking statuses were updated where provided.`);
         setIsImportModalOpen(false);
       } catch (err) { alert("Import failed. Check file format."); console.error(err); }
     };
@@ -354,11 +347,7 @@ const App = () => {
   const handleEmployeeSearch = (e) => {
       e.preventDefault();
       const emp = employees.find(e => e.email.toLowerCase() === empSearchEmail.toLowerCase().trim());
-      
-      if(!emp) {
-          alert("No record found. Please contact IT Division.");
-          return;
-      }
+      if(!emp) { alert("No record found. Please contact IT Division."); return; }
       setFoundEmployee(emp);
       setUploadStatus('idle');
   };
@@ -366,39 +355,16 @@ const App = () => {
   const handleEmployeeUpload = async (e) => {
       const file = e.target.files[0];
       if(!file || !foundEmployee) return;
-
-      const validTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-      if (!validTypes.includes(file.type)) {
-          alert("Security Alert: Only PDF, JPG, and PNG files are allowed.");
-          return;
-      }
-      if (file.size > 5 * 1024 * 1024) { 
-          alert("File is too large. Max size is 5MB.");
-          return;
-      }
-
       setUploadStatus('uploading');
-      
       setTimeout(async () => {
           try {
               const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', foundEmployee.id);
-              
-              await setDoc(ref, {
-                  undertakingReceived: true,
-                  receivedDate: new Date().toISOString().split('T')[0],
-                  status: 'Accepted',
-                  updatedAt: new Date().toISOString()
-              }, { merge: true });
-
+              await setDoc(ref, { undertakingReceived: true, receivedDate: new Date().toISOString().split('T')[0], status: 'Accepted', updatedAt: new Date().toISOString() }, { merge: true });
               await logAction("Undertaking Uploaded", `User ${foundEmployee.email} uploaded compliance doc.`, 'success', 'Employee Portal');
-              
               setUploadStatus('success');
               setShowConfetti(true);
               setTimeout(() => setShowConfetti(false), 8000); 
-          } catch (err) {
-              console.error(err);
-              setUploadStatus('error');
-          }
+          } catch (err) { console.error(err); setUploadStatus('error'); }
       }, 2000);
   };
 
@@ -408,8 +374,7 @@ const App = () => {
     const accepted = employees.filter(e => e.undertakingReceived).length;
     const pending = employees.filter(e => !e.undertakingReceived).length;
     const notified = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
-    
-    const deptMap = {};
+    const deptMap = { 'Unassigned': { name: 'Unassigned', total: 0, compliant: 0, employees: [] } };
     employees.forEach(emp => {
         let d = (emp.department || 'Unassigned').trim();
         if(!d) d = 'Unassigned';
@@ -417,11 +382,8 @@ const App = () => {
         deptMap[d].total++;
         if (emp.undertakingReceived) deptMap[d].compliant++;
     });
-    return { 
-        total, accepted, pending, notified,
-        percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, 
-        departments: deptMap 
-    };
+    if(deptMap['Unassigned'].total === 0) delete deptMap['Unassigned'];
+    return { total, accepted, pending, notified, percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, departments: deptMap };
   }, [employees]);
 
   // --- CRUD HANDLERS ---
@@ -429,22 +391,32 @@ const App = () => {
     e.preventDefault();
     if (!adminUser || viewOnlyMode) return;
     const docId = formData.email || `unknown_${Date.now()}`;
-    
     let status = 'Pending';
     if(formData.notificationSent) status = 'Notified';
     if(formData.undertakingReceived) status = 'Accepted';
-
     try {
-        await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', docId), { 
-            ...formData, status, updatedAt: new Date().toISOString() 
-        }, { merge: true });
-        
+        await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', docId), { ...formData, status, updatedAt: new Date().toISOString() }, { merge: true });
         await logAction(editingId ? "Updated Record" : "Created Record", `Employee: ${formData.email}`, 'success');
-        setIsAddModalOpen(false); 
-        resetForm();
+        setIsAddModalOpen(false); resetForm();
     } catch (err) { alert("Error saving record."); }
   };
   
+  const handleClearDatabase = async () => {
+    if (!adminUser || !window.confirm("⚠️ DANGER: This will delete ALL records. Are you sure?")) return;
+    if (!window.confirm("⚠️ FINAL WARNING: This action cannot be undone. Confirm wipe?")) return;
+    
+    try {
+        const batch = writeBatch(db);
+        employees.forEach(emp => {
+            const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
+            batch.delete(ref);
+        });
+        await batch.commit();
+        await logAction("Database Wipe", "All records deleted by Admin", 'danger');
+        alert("Database cleared successfully.");
+    } catch (err) { console.error(err); alert("Failed to clear database."); }
+  };
+
   const handleInputChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
   const resetForm = () => { setFormData({ firstName: '', lastName: '', email: '', contactPerson: '', mobile: '', status: 'Pending', notificationSent: false, undertakingReceived: false, type: 'Individual', srNo: '', department: '', responsibleOfficer: '', sentDate: '', receivedDate: '' }); setEditingId(null); };
 
@@ -459,10 +431,13 @@ const App = () => {
       return matchSearch;
   });
 
-  const unassignedEmployees = employees.filter(e => 
-      (!e.department || e.department === 'Unassigned') && 
-      (e.email.toLowerCase().includes(deptSearchTerm.toLowerCase()) || e.firstName.toLowerCase().includes(deptSearchTerm.toLowerCase()))
-  );
+  const unassignedEmployees = employees.filter(e => (!e.department || e.department === 'Unassigned'));
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredEmployees.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
 
   // === FRONT PAGE (EMPLOYEE PORTAL) ===
   if (!adminUser) {
@@ -592,6 +567,8 @@ const App = () => {
                </button>
                {isAdminMenuOpen && (
                    <div className="absolute bottom-20 left-4 right-4 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 p-2 z-50">
+                       <button onClick={handleClearDatabase} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 text-xs font-bold text-red-600"><Trash2 className="w-4 h-4"/> Wipe Data</button>
+                       <div className="h-px bg-slate-100 my-1"></div>
                        <button onClick={handleAdminLogout} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 text-xs font-bold text-slate-600"><LogOut className="w-4 h-4"/> Logout</button>
                    </div>
                )}
@@ -691,7 +668,7 @@ const App = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {filteredEmployees.slice(0, 50).map(emp => (
+                                    {currentItems.map(emp => (
                                         <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                                             <td className="p-4">
                                                 <div className="font-bold text-sm dark:text-white">{emp.firstName} {emp.lastName}</div>
@@ -718,6 +695,14 @@ const App = () => {
                                     ))}
                                 </tbody>
                             </table>
+                            {/* Pagination Controls */}
+                            <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                                <span className="text-xs font-bold text-slate-500">Page {currentPage} of {totalPages}</span>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"><ChevronLeft className="w-4 h-4"/></button>
+                                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"><ChevronRight className="w-4 h-4"/></button>
+                                </div>
+                            </div>
                         </div>
                     )}
                     
