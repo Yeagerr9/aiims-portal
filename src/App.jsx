@@ -29,7 +29,7 @@ import {
   ChevronRight, Phone, UserCircle, 
   LayoutDashboard, History, Bell, TrendingUp, Settings, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
-  Moon, Sun, LogOut, XCircle, Loader2, Download, FileBarChart, Zap,
+  Moon, Sun, LogOut, XCircle, Loader2, FileBarChart, Zap,
   FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft
 } from 'lucide-react';
 
@@ -181,6 +181,39 @@ const App = () => {
               action, details, type, timestamp: new Date().toISOString(), user: actor
           });
       } catch (err) { console.error("Log Error:", err); }
+  };
+
+  // --- TOGGLE HANDLERS (NEW FEATURE) ---
+  const toggleNotification = async (emp) => {
+      if(!adminUser || viewOnlyMode) return;
+      const newStatus = !emp.notificationSent;
+      try {
+          const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
+          let masterStatus = 'Pending';
+          if(newStatus) masterStatus = 'Notified';
+          if(emp.undertakingReceived) masterStatus = 'Accepted'; // Undertaking overrides
+
+          await setDoc(ref, {
+              notificationSent: newStatus,
+              status: masterStatus,
+              updatedAt: new Date().toISOString()
+          }, { merge: true });
+          await logAction("Manual Toggle", `Set Notification to ${newStatus} for ${emp.email}`, 'warning');
+      } catch(e) { console.error(e); }
+  };
+
+  const toggleUndertaking = async (emp) => {
+      if(!adminUser || viewOnlyMode) return;
+      const newStatus = !emp.undertakingReceived;
+      try {
+          const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
+          await setDoc(ref, {
+              undertakingReceived: newStatus,
+              status: newStatus ? 'Accepted' : (emp.notificationSent ? 'Notified' : 'Pending'),
+              updatedAt: new Date().toISOString()
+          }, { merge: true });
+          await logAction("Manual Toggle", `Set Undertaking to ${newStatus} for ${emp.email}`, 'warning');
+      } catch(e) { console.error(e); }
   };
 
   const handleCreateDepartment = async () => {
@@ -399,7 +432,7 @@ const App = () => {
   
   const bgClass = darkMode
     ? "bg-black text-white"
-    : "bg-[#eef2f6] text-slate-900"; // Pastel grey-blue for better glass visibility
+    : "bg-[#eef2f6] text-slate-900"; 
 
   // === RENDER ===
   if (!adminUser) {
@@ -677,16 +710,16 @@ const App = () => {
                                             <div className="text-[10px] opacity-30 mt-1 font-mono">{emp.mobile || 'N/A'}</div>
                                         </td>
                                         <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
-                                        <td className="p-6 text-center">
+                                        <td className="p-6 text-center cursor-pointer hover:scale-105 transition-transform" onClick={() => toggleNotification(emp)}>
                                             {emp.notificationSent ? 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg text-[10px] font-bold">Sent</span> : 
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg text-[10px] font-bold shadow-sm">Sent</span> : 
                                                 <span className="opacity-20">-</span>
                                             }
                                         </td>
-                                        <td className="p-6 text-center">
+                                        <td className="p-6 text-center cursor-pointer hover:scale-105 transition-transform" onClick={() => toggleUndertaking(emp)}>
                                             {emp.undertakingReceived ? 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 rounded-lg text-[10px] font-bold">Received</span> : 
-                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-500/20 text-red-500 border border-red-500/30 rounded-lg text-[10px] font-bold">Pending</span>
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 rounded-lg text-[10px] font-bold shadow-sm">Received</span> : 
+                                                <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-500/20 text-red-500 border border-red-500/30 rounded-lg text-[10px] font-bold shadow-sm">Pending</span>
                                             }
                                         </td>
                                         <td className="p-6 text-right">
