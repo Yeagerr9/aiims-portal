@@ -30,7 +30,7 @@ import {
   LayoutDashboard, History, Bell, TrendingUp, Settings, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
   Moon, Sun, LogOut, XCircle, Loader2, Download, FileBarChart, Zap,
-  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick
+  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick, Send
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -711,29 +711,29 @@ const App = () => {
                                         </td>
                                         <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
                                         
-                                        {/* CLICKABLE NOTIFICATION TOGGLE */}
+                                        {/* CLICKABLE NOTIFICATION TOGGLE - HIGH VISIBILITY ORANGE */}
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => toggleNotification(emp)}
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.notificationSent 
                                                     ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 shadow-blue-500/10' 
-                                                    : 'bg-white/5 text-white/30 border-white/10 hover:bg-white/10 hover:text-white'
+                                                    : 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 hover:shadow-amber-500/20'
                                                 }`}
                                             >
-                                                {emp.notificationSent ? <Bell className="w-3 h-3 fill-current"/> : <MousePointerClick className="w-3 h-3"/>}
+                                                {emp.notificationSent ? <Bell className="w-3 h-3 fill-current"/> : <Send className="w-3 h-3"/>}
                                                 {emp.notificationSent ? 'Sent' : 'Mark Sent'}
                                             </button>
                                         </td>
 
-                                        {/* CLICKABLE UNDERTAKING TOGGLE */}
+                                        {/* CLICKABLE UNDERTAKING TOGGLE - HIGH VISIBILITY RED/GREEN */}
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => toggleUndertaking(emp)}
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.undertakingReceived 
                                                     ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-emerald-500/10' 
-                                                    : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 hover:text-red-300'
+                                                    : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20 hover:shadow-red-500/20'
                                                 }`}
                                             >
                                                 {emp.undertakingReceived ? <CheckCircle2 className="w-3 h-3"/> : <XCircle className="w-3 h-3"/>}
