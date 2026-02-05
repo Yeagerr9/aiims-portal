@@ -102,8 +102,8 @@ const App = () => {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false); 
   const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false); 
-  const [showWipeModal, setShowWipeModal] = useState(false); // New Wipe Modal
-  const [wipePassword, setWipePassword] = useState(''); // Wipe Password
+  const [showWipeModal, setShowWipeModal] = useState(false); 
+  const [wipePassword, setWipePassword] = useState(''); 
   const [editingId, setEditingId] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -401,10 +401,7 @@ const App = () => {
       
       const credential = EmailAuthProvider.credential(adminUser.email, wipePassword);
       try {
-          // Re-authenticate user to verify password
           await reauthenticateWithCredential(adminUser, credential);
-          
-          // Proceed with Wipe
           const batch = writeBatch(db);
           employees.forEach(emp => {
               const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
@@ -639,7 +636,7 @@ const App = () => {
       </div>
 
       {/* CONTENT AREA */}
-      <main className="flex-1 h-full overflow-y-auto p-8 pb-32 relative z-10 scroll-smooth">
+      <main className="flex-1 h-full overflow-y-auto p-8 pb-32 relative z-10">
          <header className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-4">
                 <img src={aiimsLogo} className="w-12 h-12 object-contain" />
@@ -739,14 +736,14 @@ const App = () => {
                                         </td>
                                         <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
                                         
-                                        {/* CLICKABLE NOTIFICATION TOGGLE - HIGH VISIBILITY AMBER/GOLD */}
+                                        {/* CLICKABLE NOTIFICATION TOGGLE - AMBER GRADIENT */}
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => toggleNotification(emp)}
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.notificationSent 
-                                                    ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 shadow-blue-500/10' 
-                                                    : 'bg-amber-500/20 text-amber-500 border-amber-500/40 hover:bg-amber-500/30 hover:shadow-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                                                    ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-blue-500/30 text-blue-500 shadow-blue-500/10' 
+                                                    : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/30 text-amber-500 hover:shadow-amber-500/20'
                                                 }`}
                                             >
                                                 {emp.notificationSent ? <Bell className="w-3 h-3 fill-current"/> : <Send className="w-3 h-3"/>}
@@ -754,14 +751,14 @@ const App = () => {
                                             </button>
                                         </td>
 
-                                        {/* CLICKABLE UNDERTAKING TOGGLE - HIGH VISIBILITY RED/GREEN */}
+                                        {/* CLICKABLE UNDERTAKING TOGGLE - RED/GREEN GRADIENT */}
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => toggleUndertaking(emp)}
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.undertakingReceived 
-                                                    ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-emerald-500/10' 
-                                                    : 'bg-red-500/20 text-red-500 border-red-500/30 hover:bg-red-500/30 hover:shadow-red-500/20'
+                                                    ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/30 text-emerald-500 shadow-emerald-500/10' 
+                                                    : 'bg-gradient-to-r from-red-500/20 to-pink-500/20 border-red-500/30 text-red-500 hover:shadow-red-500/20'
                                                 }`}
                                             >
                                                 {emp.undertakingReceived ? <CheckCircle2 className="w-3 h-3"/> : <XCircle className="w-3 h-3"/>}
