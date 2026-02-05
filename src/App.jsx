@@ -9,7 +9,9 @@ import {
   getAuth, 
   signInWithEmailAndPassword, 
   signOut,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  reauthenticateWithCredential,
+  EmailAuthProvider
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -30,7 +32,7 @@ import {
   LayoutDashboard, History, Bell, TrendingUp, Settings, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
   Moon, Sun, LogOut, XCircle, Loader2, Download, FileBarChart, Zap,
-  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick, Send
+  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick, Send, ShieldAlert
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -100,6 +102,8 @@ const App = () => {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isDeptEditModalOpen, setIsDeptEditModalOpen] = useState(false); 
   const [isMoveMemberModalOpen, setIsMoveMemberModalOpen] = useState(false); 
+  const [showWipeModal, setShowWipeModal] = useState(false); // New Wipe Modal
+  const [wipePassword, setWipePassword] = useState(''); // Wipe Password
   const [editingId, setEditingId] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -390,19 +394,43 @@ const App = () => {
     } catch (err) { alert("Error saving record."); }
   };
   
-  const handleClearDatabase = async () => {
-    if (!adminUser || !window.confirm("⚠️ DANGER: This will delete ALL records. Are you sure?")) return;
-    if (!window.confirm("⚠️ FINAL WARNING: This action cannot be undone. Confirm wipe?")) return;
-    try {
-        const batch = writeBatch(db);
-        employees.forEach(emp => {
-            const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
-            batch.delete(ref);
-        });
-        await batch.commit();
-        await logAction("Database Wipe", "All records deleted by Admin", 'danger');
-        alert("Database cleared successfully.");
-    } catch (err) { console.error(err); alert("Failed to clear database."); }
+  // --- SECURE WIPE HANDLER ---
+  const handleVerifyAndWipe = async (e) => {
+      e.preventDefault();
+      if (!adminUser || !wipePassword) return;
+      
+      const credential = EmailAuthProvider.credential(adminUser.email, wipePassword);
+      try {
+          // Re-authenticate user to verify password
+          await reauthenticateWithCredential(adminUser, credential);
+          
+          // Proceed with Wipe
+          const batch = writeBatch(db);
+          employees.forEach(emp => {
+              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
+              batch.delete(ref);
+          });
+          await batch.commit();
+          await logAction("Database Wipe", "All records deleted by Admin", 'danger');
+          
+          alert("Database Wiped Successfully.");
+          setShowWipeModal(false);
+          setWipePassword('');
+      } catch (err) {
+          alert("Incorrect Password. Action Denied.");
+          console.error(err);
+      }
+  };
+
+  // --- SINGLE DELETE HANDLER ---
+  const handleDeleteUser = async (empId) => {
+      if(!adminUser || viewOnlyMode) return;
+      if(!window.confirm("Are you sure you want to delete this user? This action cannot be undone.")) return;
+      
+      try {
+          await deleteDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId));
+          await logAction("User Deleted", `Deleted user ID: ${empId}`, 'warning');
+      } catch(e) { console.error(e); alert("Failed to delete."); }
   };
 
   const handleInputChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
@@ -603,7 +631,7 @@ const App = () => {
           </button>
           {isAdminMenuOpen && (
               <div className={`absolute bottom-full mb-4 left-1/2 -translate-x-1/2 rounded-2xl p-2 w-48 shadow-2xl flex flex-col gap-1 ${glassClass}`}>
-                  <button onClick={handleClearDatabase} className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/10 text-xs font-bold text-red-500 transition-colors text-left"><Trash2 className="w-4 h-4"/> Wipe Data</button>
+                  <button onClick={() => setShowWipeModal(true)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/10 text-xs font-bold text-red-500 transition-colors text-left"><Trash2 className="w-4 h-4"/> Wipe Data</button>
                   <div className="h-px bg-current opacity-10 my-1"></div>
                   <button onClick={handleAdminLogout} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 text-xs font-bold transition-colors text-left"><LogOut className="w-4 h-4"/> Logout</button>
               </div>
@@ -711,14 +739,14 @@ const App = () => {
                                         </td>
                                         <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
                                         
-                                        {/* CLICKABLE NOTIFICATION TOGGLE - HIGH VISIBILITY ORANGE */}
+                                        {/* CLICKABLE NOTIFICATION TOGGLE - HIGH VISIBILITY AMBER/GOLD */}
                                         <td className="p-6 text-center">
                                             <button 
                                                 onClick={() => toggleNotification(emp)}
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.notificationSent 
                                                     ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 shadow-blue-500/10' 
-                                                    : 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 hover:shadow-amber-500/20'
+                                                    : 'bg-amber-500/20 text-amber-500 border-amber-500/40 hover:bg-amber-500/30 hover:shadow-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
                                                 }`}
                                             >
                                                 {emp.notificationSent ? <Bell className="w-3 h-3 fill-current"/> : <Send className="w-3 h-3"/>}
@@ -733,7 +761,7 @@ const App = () => {
                                                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 border shadow-sm hover:scale-105 active:scale-95 ${
                                                     emp.undertakingReceived 
                                                     ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-emerald-500/10' 
-                                                    : 'bg-red-500/10 text-red-500 border-red-500/30 hover:bg-red-500/20 hover:shadow-red-500/20'
+                                                    : 'bg-red-500/20 text-red-500 border-red-500/30 hover:bg-red-500/30 hover:shadow-red-500/20'
                                                 }`}
                                             >
                                                 {emp.undertakingReceived ? <CheckCircle2 className="w-3 h-3"/> : <XCircle className="w-3 h-3"/>}
@@ -741,8 +769,9 @@ const App = () => {
                                             </button>
                                         </td>
 
-                                        <td className="p-6 text-right">
+                                        <td className="p-6 text-right flex gap-2 justify-end">
                                             <button onClick={() => {setFormData(emp); setEditingId(emp.id); setIsAddModalOpen(true)}} className="opacity-40 hover:opacity-100 p-2 rounded-lg bg-black/5 hover:bg-black/10 transition-colors"><Edit2 className="w-4 h-4"/></button>
+                                            <button onClick={() => handleDeleteUser(emp.id)} className="opacity-40 hover:opacity-100 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
                                         </td>
                                     </tr>
                                 ))}
@@ -858,6 +887,26 @@ const App = () => {
                       <span className="text-sm font-bold opacity-60 group-hover:opacity-100 transition-colors">Click to Select .xlsx File</span>
                   </label>
                   <button onClick={() => setIsImportModalOpen(false)} className="mt-8 opacity-40 text-xs font-bold hover:opacity-100 uppercase tracking-widest transition-colors">Cancel Operation</button>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL: WIPE CONFIRMATION */}
+      {showWipeModal && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+              <div className={`w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 ${glassClass} border-red-500/20`}>
+                  <div className="flex flex-col items-center text-center mb-6">
+                      <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 border border-red-500/30"><ShieldAlert className="w-8 h-8 text-red-500"/></div>
+                      <h3 className="text-2xl font-black text-red-500">Security Check</h3>
+                      <p className="text-sm opacity-60 mt-2">Enter Admin Password to confirm database wipe.</p>
+                  </div>
+                  <form onSubmit={handleVerifyAndWipe} className="space-y-4">
+                      <input type="password" value={wipePassword} onChange={(e) => setWipePassword(e.target.value)} className={`w-full px-5 py-4 rounded-2xl font-bold outline-none border focus:ring-2 focus:ring-red-500/50 ${darkMode ? 'bg-black/30 border-white/10' : 'bg-slate-100 border-slate-200'}`} placeholder="Admin Password" autoFocus />
+                      <div className="flex gap-3 pt-2">
+                          <button type="button" onClick={() => setShowWipeModal(false)} className="flex-1 py-3 bg-white/5 rounded-xl font-bold hover:bg-white/10">Cancel</button>
+                          <button type="submit" className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-900/30">Confirm Wipe</button>
+                      </div>
+                  </form>
               </div>
           </div>
       )}
