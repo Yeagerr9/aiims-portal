@@ -32,7 +32,7 @@ import {
   LayoutDashboard, History, Bell, TrendingUp, Settings, Lock,
   ArrowLeft, Mail, Edit2, Trash2, ShieldCheck, Building2,
   Moon, Sun, LogOut, XCircle, Loader2, Download, FileBarChart, Zap,
-  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick, Send, ShieldAlert
+  FileSpreadsheet, List, FolderPlus, Clock, ArrowRightLeft, MousePointerClick, Send, ShieldAlert, UserCheck
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -263,9 +263,9 @@ const App = () => {
   };
 
   const handleExportCSV = () => {
-      const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Mobile", "Status", "Undertaking Received", "Notification Sent"];
+      const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Responsible Person", "Mobile", "Status", "Undertaking Received", "Notification Sent"];
       const csv = [headers.join(","), ...employees.map(e => 
-        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No", e.notificationSent ? "Yes" : "No"].join(",")
+        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, `"${e.contactPerson || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No", e.notificationSent ? "Yes" : "No"].join(",")
       )].join("\n");
       const link = document.createElement("a");
       link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -293,6 +293,8 @@ const App = () => {
         let underIdx = headers.findIndex(h => h.includes('undertaking') || h.includes('received'));
         let deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept'));
         let mobileIdx = headers.findIndex(h => h.includes('mobile'));
+        // Responsible Person Mapping
+        let contactIdx = headers.findIndex(h => h.includes('contact person') || h.includes('responsible') || h.includes('incharge'));
 
         const isTrue = (val) => {
             if (!val) return false;
@@ -314,6 +316,10 @@ const App = () => {
               if (underIdx > -1 && isTrue(row[underIdx])) newUndertaking = true;
               let newDept = existing?.department || 'Unassigned';
               if (deptIdx > -1 && row[deptIdx]) newDept = row[deptIdx];
+              
+              // Map Responsible Person
+              let newContact = existing?.contactPerson || '';
+              if (contactIdx > -1 && row[contactIdx]) newContact = row[contactIdx];
 
               batch.set(docRef, {
                   srNo: row[0] || existing?.srNo || '',
@@ -322,7 +328,7 @@ const App = () => {
                   email: email,
                   department: newDept,
                   mobile: (mobileIdx > -1 && row[mobileIdx]) ? row[mobileIdx] : (existing?.mobile || ''),
-                  contactPerson: existing?.contactPerson || row[4] || '',
+                  contactPerson: newContact, // Updated field
                   notificationSent: newNotified,
                   undertakingReceived: newUndertaking,
                   status: newUndertaking ? 'Accepted' : (newNotified ? 'Notified' : 'Pending'),
@@ -609,10 +615,13 @@ const App = () => {
   return (
     <div className={`flex h-screen w-full overflow-hidden ${bgClass} transition-colors duration-500`}>
       
-      {/* Ambient Background */}
-      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden opacity-50">
-          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[150px]"></div>
-          <div className="absolute bottom-[10%] left-[10%] w-[30%] h-[30%] bg-purple-500/20 rounded-full blur-[150px]"></div>
+      {/* Moving Background Grid (New) */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden opacity-30">
+          {/* Cyber Grid */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] animate-pan-grid"></div>
+          {/* Moving Orbs */}
+          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[120px] animate-pulse"></div>
+          <div className="absolute bottom-[10%] left-[10%] w-[30%] h-[30%] bg-purple-500/20 rounded-full blur-[120px] animate-pulse delay-700"></div>
       </div>
 
       {/* FLOATING GLASS DOCK */}
@@ -721,6 +730,7 @@ const App = () => {
                                 <tr>
                                     <th className="p-6">Staff</th>
                                     <th className="p-6">Department</th>
+                                    <th className="p-6">Responsible</th>
                                     <th className="p-6 text-center">Notified</th>
                                     <th className="p-6 text-center">Undertaking</th>
                                     <th className="p-6 text-right">Action</th>
@@ -736,6 +746,15 @@ const App = () => {
                                         </td>
                                         <td className="p-6 text-xs font-bold opacity-60">{emp.department || 'Unassigned'}</td>
                                         
+                                        {/* RESPONSIBLE PERSON COLUMN */}
+                                        <td className="p-6">
+                                            {emp.contactPerson ? (
+                                                <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-lg text-[10px] font-bold text-purple-400">
+                                                    <UserCheck className="w-3 h-3"/> {emp.contactPerson}
+                                                </div>
+                                            ) : <span className="text-[10px] opacity-30">-</span>}
+                                        </td>
+
                                         {/* CLICKABLE NOTIFICATION TOGGLE - AMBER GRADIENT */}
                                         <td className="p-6 text-center">
                                             <button 
@@ -919,6 +938,7 @@ const App = () => {
                         <input name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                       </div>
                       <input name="email" placeholder="Email" value={formData.email} onChange={handleInputChange} className={`w-full p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
+                      <input name="contactPerson" placeholder="Responsible Person(s)" value={formData.contactPerson} onChange={handleInputChange} className={`w-full p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                       <div className="grid grid-cols-2 gap-4">
                         <input name="department" placeholder="Department" value={formData.department} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
                         <input name="mobile" placeholder="Mobile" value={formData.mobile} onChange={handleInputChange} className={`p-4 rounded-xl text-sm font-bold outline-none border focus:border-blue-500/50 ${darkMode ? 'bg-black/20 border-white/10' : 'bg-slate-100 border-slate-200'}`} />
