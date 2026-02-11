@@ -53,7 +53,7 @@ const ORG_ID = "aiims_raipur_main_db";
 
 // --- Liquid Glass Helper Components ---
 const GlassCard = ({ children, className = "" }) => (
-  <div className={`relative overflow-hidden bg-white/5 backdrop-blur-3xl backdrop-saturate-150 border-t border-l border-white/20 border-b border-r border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] rounded-[2.5rem] ${className}`}>
+  <div className={`relative overflow-hidden bg-white/5 backdrop-blur-3xl backdrop-saturate-150 border-t border-l border-white/20 border-b border-r border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] rounded-[2rem] md:rounded-[2.5rem] ${className}`}>
     <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
     {children}
   </div>
@@ -72,9 +72,8 @@ const GlassButton = ({ children, onClick, className = "", active = false, varian
   return (
     <button 
       onClick={onClick}
-      className={`relative px-5 py-3 rounded-full font-bold text-xs uppercase tracking-wider transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] border backdrop-blur-md flex items-center justify-center gap-2 group ${active ? variants.active : variants[variant]} ${className}`}
+      className={`relative px-4 py-3 md:px-5 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] border backdrop-blur-md flex items-center justify-center gap-2 group ${active ? variants.active : variants[variant]} ${className}`}
     >
-      {/* Specular Shine Effect */}
       <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-50" />
       {children}
     </button>
@@ -100,7 +99,6 @@ const formatDate = (isoString) => {
 };
 
 const App = () => {
-  // --- STATE ---
   const [adminUser, setAdminUser] = useState(null); 
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -151,14 +149,9 @@ const App = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // --- INIT ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user && !user.isAnonymous) {
-            setAdminUser(user);
-        } else {
-            setAdminUser(null);
-        }
+        if (user && !user.isAnonymous) { setAdminUser(user); } else { setAdminUser(null); }
         fetchData();
     });
     return () => unsubscribe();
@@ -172,51 +165,20 @@ const App = () => {
       setEmployees(data);
       setLoading(false);
     });
-
     const qDept = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata'));
-    const unsubDept = onSnapshot(qDept, (snapshot) => {
-        const meta = {};
-        snapshot.docs.forEach(doc => { meta[doc.id] = doc.data(); });
-        setDeptMetadata(meta);
-    });
-
+    const unsubDept = onSnapshot(qDept, (snapshot) => { const meta = {}; snapshot.docs.forEach(doc => { meta[doc.id] = doc.data(); }); setDeptMetadata(meta); });
     const qLogs = query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), orderBy('timestamp', 'desc'));
-    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAuditLogs(logs);
-    });
-    
+    const unsubLogs = onSnapshot(qLogs, (snapshot) => { const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); setAuditLogs(logs); });
     return () => { unsubEmp(); unsubDept(); unsubLogs(); };
   };
 
-  // --- ACTIONS ---
   const handleAdminLogin = async (e) => {
-      e.preventDefault();
-      setAuthError('');
-      try {
-          await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
-          setShowAdminLogin(false);
-          setLoginEmail(''); setLoginPassword('');
-      } catch (err) {
-          setAuthError("Invalid Credentials.");
-      }
+      e.preventDefault(); setAuthError('');
+      try { await signInWithEmailAndPassword(auth, loginEmail, loginPassword); setShowAdminLogin(false); setLoginEmail(''); setLoginPassword(''); } catch (err) { setAuthError("Invalid Credentials."); }
   };
+  const handleAdminLogout = async () => { await signOut(auth); setAdminUser(null); setActiveView('dashboard'); };
+  const logAction = async (action, details, type = 'info', actor = 'Admin') => { try { await addDoc(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), { action, details, type, timestamp: new Date().toISOString(), user: actor }); } catch (err) { console.error("Log Error:", err); } };
 
-  const handleAdminLogout = async () => {
-      await signOut(auth);
-      setAdminUser(null);
-      setActiveView('dashboard');
-  };
-
-  const logAction = async (action, details, type = 'info', actor = 'Admin') => {
-      try {
-          await addDoc(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), {
-              action, details, type, timestamp: new Date().toISOString(), user: actor
-          });
-      } catch (err) { console.error("Log Error:", err); }
-  };
-
-  // --- TOGGLE HANDLERS ---
   const toggleNotification = async (emp) => {
       if(!adminUser || viewOnlyMode) return;
       const newStatus = !emp.notificationSent;
@@ -225,12 +187,7 @@ const App = () => {
           let masterStatus = 'Pending';
           if(newStatus) masterStatus = 'Notified';
           if(emp.undertakingReceived) masterStatus = 'Accepted'; 
-
-          await setDoc(ref, {
-              notificationSent: newStatus,
-              status: masterStatus,
-              updatedAt: new Date().toISOString()
-          }, { merge: true });
+          await setDoc(ref, { notificationSent: newStatus, status: masterStatus, updatedAt: new Date().toISOString() }, { merge: true });
           await logAction("Manual Toggle", `Set Notification to ${newStatus} for ${emp.email}`, 'warning');
       } catch(e) { console.error(e); }
   };
@@ -240,160 +197,65 @@ const App = () => {
       const newStatus = !emp.undertakingReceived;
       try {
           const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
-          await setDoc(ref, {
-              undertakingReceived: newStatus,
-              status: newStatus ? 'Accepted' : (emp.notificationSent ? 'Notified' : 'Pending'),
-              updatedAt: new Date().toISOString()
-          }, { merge: true });
+          await setDoc(ref, { undertakingReceived: newStatus, status: newStatus ? 'Accepted' : (emp.notificationSent ? 'Notified' : 'Pending'), updatedAt: new Date().toISOString() }, { merge: true });
           await logAction("Manual Toggle", `Set Undertaking to ${newStatus} for ${emp.email}`, 'warning');
       } catch(e) { console.error(e); }
   };
 
-  const handleCreateDepartment = async () => {
-      if(!adminUser || viewOnlyMode) return;
-      if(!deptFormData.name.trim()) return alert("Please enter a department name.");
-      try {
-          const batch = writeBatch(db);
-          deptFormData.selectedEmps.forEach(empId => {
-              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId);
-              batch.update(ref, { department: deptFormData.name, updatedAt: new Date().toISOString() });
-          });
-          await batch.commit();
-          await logAction("Department Created", `Created '${deptFormData.name}'`, 'success');
-          setIsDeptModalOpen(false);
-          setDeptFormData({ name: '', selectedEmps: [] });
-      } catch (err) { console.error(err); alert("Failed."); }
-  };
-
-  const handleUpdateDeptMeta = async () => {
-      if(!adminUser || viewOnlyMode || !selectedDepartment) return;
-      try {
-          await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata', selectedDepartment), {
-              ...deptMetaForm, updatedAt: new Date().toISOString()
-          }, { merge: true });
-          setIsDeptEditModalOpen(false);
-          await logAction("Dept Info Updated", `Updated metadata for ${selectedDepartment}`, 'info');
-      } catch (err) { console.error(err); alert("Failed."); }
-  };
-
-  const handleMoveEmployees = async () => {
-      if(!adminUser || viewOnlyMode || !selectedDepartment) return;
-      if(selectedMoveEmps.length === 0) return alert("Select at least one employee.");
-      try {
-          const batch = writeBatch(db);
-          selectedMoveEmps.forEach(empId => {
-              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId);
-              batch.update(ref, { department: selectedDepartment, updatedAt: new Date().toISOString() });
-          });
-          await batch.commit();
-          await logAction("Staff Moved", `Moved ${selectedMoveEmps.length} staff to ${selectedDepartment}`, 'warning');
-          setIsMoveMemberModalOpen(false); setSelectedMoveEmps([]);
-      } catch (err) { console.error(err); alert("Move failed."); }
-  };
-
   const handleExportCSV = () => {
       const headers = ["Sr No", "First Name", "Last Name", "Email", "Department", "Responsible Person", "Mobile", "Status", "Undertaking Received", "Notification Sent"];
-      const csv = [headers.join(","), ...employees.map(e => 
-        [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, `"${e.contactPerson || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No", e.notificationSent ? "Yes" : "No"].join(",")
-      )].join("\n");
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      link.download = `aiims_compliance_report_${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-      logAction("Data Export", "Downloaded CSV Report");
+      const csv = [headers.join(","), ...employees.map(e => [e.srNo, `"${e.firstName}"`, `"${e.lastName}"`, e.email, `"${e.department || ''}"`, `"${e.contactPerson || ''}"`, e.mobile, e.status, e.undertakingReceived ? "Yes" : "No", e.notificationSent ? "Yes" : "No"].join(","))].join("\n");
+      const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = `aiims_compliance_report_${new Date().toISOString().split('T')[0]}.csv`; link.click(); logAction("Data Export", "Downloaded CSV Report");
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file || !adminUser) return;
+    const file = e.target.files[0]; if (!file || !adminUser) return;
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const data = new Uint8Array(evt.target.result); const workbook = XLSX.read(data, { type: 'array' });
         const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
         if (jsonData.length < 2) return alert("File appears empty.");
-        const batch = writeBatch(db);
-        let count = 0;
+        const batch = writeBatch(db); let count = 0;
         const headers = jsonData[0].map(h => h?.toString().toLowerCase().trim() || '');
         const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('user id'));
-        
         let notifIdx = headers.findIndex(h => h.includes('email sent') || h.includes('notification'));
         let underIdx = headers.findIndex(h => h.includes('undertaking') || h.includes('received'));
         let deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept'));
         let mobileIdx = headers.findIndex(h => h.includes('mobile'));
         let contactIdx = headers.findIndex(h => h.includes('contact person') || h.includes('responsible'));
-
-        const isTrue = (val) => {
-            if (!val) return false;
-            const s = val.toString().toLowerCase().trim();
-            return s === 'yes' || s === 'true' || s === 'done' || s === 'sent' || s === 'received' || s === 'later' || s.length > 1;
-        };
-
+        const isTrue = (val) => { if (!val) return false; const s = val.toString().toLowerCase().trim(); return s === 'yes' || s === 'true' || s === 'done' || s === 'sent' || s === 'received' || s === 'later' || s.length > 1; };
         const existingUsers = new Map(employees.map(e => [e.email.toLowerCase(), e]));
-
         jsonData.forEach((row, index) => {
            if (index === 0) return; 
            const email = row[emailIdx > -1 ? emailIdx : 3]?.toString().trim();
            if (email && email.includes('@')) {
               const docRef = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', email);
               const existing = existingUsers.get(email.toLowerCase());
-              let newNotified = existing?.notificationSent || false;
-              if (notifIdx > -1 && row[notifIdx]) newNotified = true; 
-              let newUndertaking = existing?.undertakingReceived || false;
-              if (underIdx > -1 && isTrue(row[underIdx])) newUndertaking = true;
-              let newDept = existing?.department || 'Unassigned';
-              if (deptIdx > -1 && row[deptIdx]) newDept = row[deptIdx];
-              let newContact = existing?.contactPerson || '';
-              if (contactIdx > -1 && row[contactIdx]) newContact = row[contactIdx];
-
-              batch.set(docRef, {
-                  srNo: row[0] || existing?.srNo || '',
-                  firstName: row[1] || existing?.firstName || '',
-                  lastName: row[2] || existing?.lastName || '',
-                  email: email,
-                  department: newDept,
-                  mobile: (mobileIdx > -1 && row[mobileIdx]) ? row[mobileIdx] : (existing?.mobile || ''),
-                  contactPerson: newContact, 
-                  notificationSent: newNotified,
-                  undertakingReceived: newUndertaking,
-                  status: newUndertaking ? 'Accepted' : (newNotified ? 'Notified' : 'Pending'),
-                  updatedAt: new Date().toISOString()
-              }, { merge: true });
-              count++;
+              let newNotified = existing?.notificationSent || false; if (notifIdx > -1 && row[notifIdx]) newNotified = true; 
+              let newUndertaking = existing?.undertakingReceived || false; if (underIdx > -1 && isTrue(row[underIdx])) newUndertaking = true;
+              let newDept = existing?.department || 'Unassigned'; if (deptIdx > -1 && row[deptIdx]) newDept = row[deptIdx];
+              let newContact = existing?.contactPerson || ''; if (contactIdx > -1 && row[contactIdx]) newContact = row[contactIdx];
+              batch.set(docRef, { srNo: row[0] || existing?.srNo || '', firstName: row[1] || existing?.firstName || '', lastName: row[2] || existing?.lastName || '', email: email, department: newDept, mobile: (mobileIdx > -1 && row[mobileIdx]) ? row[mobileIdx] : (existing?.mobile || ''), contactPerson: newContact, notificationSent: newNotified, undertakingReceived: newUndertaking, status: newUndertaking ? 'Accepted' : (newNotified ? 'Notified' : 'Pending'), updatedAt: new Date().toISOString() }, { merge: true }); count++;
            }
         });
-        await batch.commit();
-        await logAction("Bulk Import", `Merged ${count} records from Excel`, 'info');
-        alert(`Merged ${count} records successfully.`);
-        setIsImportModalOpen(false);
+        await batch.commit(); await logAction("Bulk Import", `Merged ${count} records`, 'info'); alert(`Merged ${count} records.`); setIsImportModalOpen(false);
       } catch (err) { alert("Import failed."); console.error(err); }
-    };
-    reader.readAsArrayBuffer(file);
+    }; reader.readAsArrayBuffer(file);
   };
 
-  const handleEmployeeSearch = (e) => {
-      e.preventDefault();
-      const emp = employees.find(e => e.email.toLowerCase() === empSearchEmail.toLowerCase().trim());
-      if(!emp) { alert("No record found. Please contact IT Division."); return; }
-      setFoundEmployee(emp); setUploadStatus('idle');
-  };
+  const handleEmployeeSearch = (e) => { e.preventDefault(); const emp = employees.find(e => e.email.toLowerCase() === empSearchEmail.toLowerCase().trim()); if(!emp) { alert("No record found."); return; } setFoundEmployee(emp); setUploadStatus('idle'); };
+  const handleEmployeeUpload = async (e) => { const file = e.target.files[0]; if(!file || !foundEmployee) return; setUploadStatus('uploading'); setTimeout(async () => { try { const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', foundEmployee.id); await setDoc(ref, { undertakingReceived: true, receivedDate: new Date().toISOString().split('T')[0], status: 'Accepted', updatedAt: new Date().toISOString() }, { merge: true }); await logAction("Undertaking Uploaded", `User ${foundEmployee.email}`, 'success'); setUploadStatus('success'); setShowConfetti(true); setTimeout(() => setShowConfetti(false), 8000); } catch (err) { console.error(err); setUploadStatus('error'); } }, 2000); };
+  
+  const handleVerifyAndWipe = async (e) => { e.preventDefault(); if (!adminUser || !wipePassword) return; const credential = EmailAuthProvider.credential(adminUser.email, wipePassword); try { await reauthenticateWithCredential(adminUser, credential); const batch = writeBatch(db); employees.forEach(emp => { const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id); batch.delete(ref); }); await batch.commit(); await logAction("Database Wipe", "All records deleted", 'danger'); alert("Wiped Successfully."); setShowWipeModal(false); setWipePassword(''); } catch (err) { alert("Incorrect Password."); } };
+  const handleDeleteUser = async (empId) => { if(!adminUser || viewOnlyMode) return; if(!window.confirm("Delete this user?")) return; try { await deleteDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId)); await logAction("User Deleted", `Deleted ${empId}`, 'warning'); } catch(e) { alert("Failed."); } };
+  const handleSave = async (e) => { e.preventDefault(); if (!adminUser || viewOnlyMode) return; const docId = formData.email || `unknown_${Date.now()}`; let status = 'Pending'; if(formData.notificationSent) status = 'Notified'; if(formData.undertakingReceived) status = 'Accepted'; try { await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', docId), { ...formData, status, updatedAt: new Date().toISOString() }, { merge: true }); await logAction(editingId ? "Updated Record" : "Created Record", formData.email, 'success'); setIsAddModalOpen(false); resetForm(); } catch (err) { alert("Error."); } };
+  const handleCreateDepartment = async () => { if(!adminUser) return; try { const batch = writeBatch(db); deptFormData.selectedEmps.forEach(empId => { const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId); batch.update(ref, { department: deptFormData.name }); }); await batch.commit(); setIsDeptModalOpen(false); setDeptFormData({ name: '', selectedEmps: [] }); } catch(e) { alert("Failed"); } };
+  const handleUpdateDeptMeta = async () => { if(!adminUser) return; try { await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'department_metadata', selectedDepartment), { ...deptMetaForm }, { merge: true }); setIsDeptEditModalOpen(false); } catch(e) { alert("Failed"); } };
+  const handleMoveEmployees = async () => { if(!adminUser) return; try { const batch = writeBatch(db); selectedMoveEmps.forEach(empId => { const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId); batch.update(ref, { department: selectedDepartment }); }); await batch.commit(); setIsMoveMemberModalOpen(false); setSelectedMoveEmps([]); } catch(e) { alert("Failed"); } };
 
-  const handleEmployeeUpload = async (e) => {
-      const file = e.target.files[0];
-      if(!file || !foundEmployee) return;
-      setUploadStatus('uploading');
-      setTimeout(async () => {
-          try {
-              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', foundEmployee.id);
-              await setDoc(ref, { undertakingReceived: true, receivedDate: new Date().toISOString().split('T')[0], status: 'Accepted', updatedAt: new Date().toISOString() }, { merge: true });
-              await logAction("Undertaking Uploaded", `User ${foundEmployee.email} uploaded compliance doc.`, 'success', 'Employee Portal');
-              setUploadStatus('success');
-              setShowConfetti(true);
-              setTimeout(() => setShowConfetti(false), 8000); 
-          } catch (err) { console.error(err); setUploadStatus('error'); }
-      }, 2000);
-  };
+  const handleInputChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
+  const resetForm = () => { setFormData({ firstName: '', lastName: '', email: '', contactPerson: '', mobile: '', status: 'Pending', notificationSent: false, undertakingReceived: false, type: 'Individual', srNo: '', department: '', responsibleOfficer: '', sentDate: '', receivedDate: '' }); setEditingId(null); };
 
   const stats = useMemo(() => {
     const total = employees.length;
@@ -401,84 +263,25 @@ const App = () => {
     const pending = employees.filter(e => !e.undertakingReceived).length;
     const notified = employees.filter(e => e.notificationSent && !e.undertakingReceived).length;
     const deptMap = { 'Unassigned': { name: 'Unassigned', total: 0, compliant: 0, employees: [] } };
-    employees.forEach(emp => {
-        let d = (emp.department || 'Unassigned').trim();
-        if(!d) d = 'Unassigned';
-        if(!deptMap[d]) deptMap[d] = { name: d, total: 0, compliant: 0, employees: [] };
-        deptMap[d].total++;
-        if (emp.undertakingReceived) deptMap[d].compliant++;
-    });
+    employees.forEach(emp => { let d = (emp.department || 'Unassigned').trim(); if(!d) d = 'Unassigned'; if(!deptMap[d]) deptMap[d] = { name: d, total: 0, compliant: 0, employees: [] }; deptMap[d].total++; if (emp.undertakingReceived) deptMap[d].compliant++; });
     if(deptMap['Unassigned'].total === 0) delete deptMap['Unassigned'];
     return { total, accepted, pending, notified, percentage: total > 0 ? Math.round((accepted / total) * 100) : 0, departments: deptMap };
   }, [employees]);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!adminUser || viewOnlyMode) return;
-    const docId = formData.email || `unknown_${Date.now()}`;
-    let status = 'Pending';
-    if(formData.notificationSent) status = 'Notified';
-    if(formData.undertakingReceived) status = 'Accepted';
-    try {
-        await setDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', docId), { ...formData, status, updatedAt: new Date().toISOString() }, { merge: true });
-        await logAction(editingId ? "Updated Record" : "Created Record", `Employee: ${formData.email}`, 'success');
-        setIsAddModalOpen(false); resetForm();
-    } catch (err) { alert("Error saving record."); }
-  };
-  
-  const handleVerifyAndWipe = async (e) => {
-      e.preventDefault();
-      if (!adminUser || !wipePassword) return;
-      const credential = EmailAuthProvider.credential(adminUser.email, wipePassword);
-      try {
-          await reauthenticateWithCredential(adminUser, credential);
-          const batch = writeBatch(db);
-          employees.forEach(emp => {
-              const ref = doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', emp.id);
-              batch.delete(ref);
-          });
-          await batch.commit();
-          await logAction("Database Wipe", "All records deleted by Admin", 'danger');
-          alert("Database Wiped Successfully.");
-          setShowWipeModal(false); setWipePassword('');
-      } catch (err) { alert("Incorrect Password. Action Denied."); console.error(err); }
-  };
-
-  const handleDeleteUser = async (empId) => {
-      if(!adminUser || viewOnlyMode) return;
-      if(!window.confirm("Are you sure you want to delete this user? This action cannot be undone.")) return;
-      try {
-          await deleteDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId));
-          await logAction("User Deleted", `Deleted user ID: ${empId}`, 'warning');
-      } catch(e) { console.error(e); alert("Failed to delete."); }
-  };
-
-  const handleInputChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
-  const resetForm = () => { setFormData({ firstName: '', lastName: '', email: '', contactPerson: '', mobile: '', status: 'Pending', notificationSent: false, undertakingReceived: false, type: 'Individual', srNo: '', department: '', responsibleOfficer: '', sentDate: '', receivedDate: '' }); setEditingId(null); };
-
   const filteredEmployees = employees.filter(emp => {
-      const matchSearch = (emp.email || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (emp.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (emp.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase());
-      if (filterStatus === 'All') return matchSearch;
-      if (filterStatus === 'Accepted') return matchSearch && emp.undertakingReceived;
-      if (filterStatus === 'Notified') return matchSearch && emp.notificationSent;
-      if (filterStatus === 'Pending') return matchSearch && !emp.notificationSent && !emp.undertakingReceived;
-      return matchSearch;
+      const match = (emp.email || '').toLowerCase().includes(searchTerm.toLowerCase()) || (emp.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) || (emp.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase());
+      if (filterStatus === 'All') return match;
+      if (filterStatus === 'Accepted') return match && emp.undertakingReceived;
+      if (filterStatus === 'Notified') return match && emp.notificationSent;
+      if (filterStatus === 'Pending') return match && !emp.notificationSent && !emp.undertakingReceived;
+      return match;
   });
-
   const unassignedEmployees = employees.filter(e => (!e.department || e.department === 'Unassigned'));
-
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredEmployees.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
 
-  // --- FLUID THEME LOGIC ---
-  const glassClass = darkMode 
-    ? "bg-white/5 border border-white/10 text-white backdrop-blur-3xl backdrop-saturate-150 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] border-t-white/20 border-b-white/5"
-    : "bg-white/70 border border-white/40 text-slate-800 backdrop-blur-3xl backdrop-saturate-150 shadow-[0_8px_32px_0_rgba(31,38,135,0.15)] border-t-white/60 border-b-white/20";
-  
   const bgClass = darkMode ? "bg-black text-white" : "bg-[#f0f4f8] text-slate-900"; 
 
   // === RENDER ===
@@ -544,7 +347,12 @@ const App = () => {
   // === ADMIN DASHBOARD ===
   return (
     <div className={`flex h-screen w-full overflow-hidden ${bgClass} transition-colors duration-500`}>
-      <div className="fixed inset-0 pointer-events-none opacity-30"><div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div><div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-900/10 via-transparent to-purple-900/10"></div></div>
+      {/* Moving Cyber Grid Background */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none opacity-30">
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] animate-pan-grid"></div>
+          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[120px] animate-pulse"></div>
+          <div className="absolute bottom-[10%] left-[10%] w-[30%] h-[30%] bg-purple-500/20 rounded-full blur-[120px] animate-pulse delay-700"></div>
+      </div>
 
       {/* DOCK */}
       <GlassCard className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-3 rounded-full !bg-white/10 !border-white/20 !backdrop-blur-2xl animate-in slide-in-from-bottom-10 duration-700">
@@ -562,7 +370,7 @@ const App = () => {
           )}
       </GlassCard>
 
-      <main className="flex-1 h-full overflow-y-auto p-8 pb-32 relative z-10 scroll-smooth">
+      <main className="flex-1 h-full overflow-y-auto p-8 pb-32 relative z-10">
          <header className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-4"><img src={aiimsLogo} className="w-12 h-12 object-contain" /><div><h1 className="text-3xl font-black capitalize mb-1 bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">{activeView}</h1><p className="text-xs font-bold opacity-50 uppercase tracking-widest">Compliance Portal</p></div></div>
             <GlassButton onClick={() => setDarkMode(!darkMode)} className="!p-3 !rounded-full">{darkMode ? <Sun className="w-5 h-5 text-amber-300"/> : <Moon className="w-5 h-5 text-indigo-600"/>}</GlassButton>
