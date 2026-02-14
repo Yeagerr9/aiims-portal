@@ -33,15 +33,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = window.__app_id || 'aiims-default'; 
+const APP_ID_CANDIDATES = Array.from(new Set(['aiims-default', window.__app_id].filter(Boolean)));
 const ORG_ID = "aiims_raipur_main_db"; 
 const UNDERTAKINGS_PATHS = [
-  ['artifacts', appId, 'organization_data', ORG_ID, 'undertakings'],
+  ...APP_ID_CANDIDATES.map((id) => ['artifacts', id, 'organization_data', ORG_ID, 'undertakings']),
   ['organization_data', ORG_ID, 'undertakings'],
   ['undertakings'],
 ];
 const AUDIT_LOGS_PATHS = [
-  ['artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'],
+  ...APP_ID_CANDIDATES.map((id) => ['artifacts', id, 'organization_data', ORG_ID, 'audit_logs']),
   ['organization_data', ORG_ID, 'audit_logs'],
   ['audit_logs'],
 ];
@@ -126,9 +126,34 @@ const App = () => {
     : "bg-white border-slate-200 shadow-sm";
 
   useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setAdminUser(user && !user.isAnonymous ? user : null);
+    });
+
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!adminUser) {
+      setEmployees([]);
+      setAuditLogs([]);
+      setIsLoadingData(false);
+      return undefined;
+    }
+
+    setIsLoadingData(true);
     const employeeSnapshots = {};
     const auditSnapshots = {};
     let hasResolvedInitialLoad = false;
+
+    const normalizeEmployee = (item) => {
+      const status = String(item.status || '').toLowerCase();
+      const statusImpliesUndertaking = ['accepted', 'compliant', 'done', 'verified', 'yes', 'true', '1'].includes(status);
+      return {
+        ...item,
+        undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
+      };
+    };
 
     const flattenAndMerge = (snapshotMap, type) => {
       const merged = new Map();
@@ -157,16 +182,12 @@ const App = () => {
       return Array.from(merged.values());
     };
 
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      setAdminUser(user && !user.isAnonymous ? user : null);
-    });
-
     const employeeUnsubs = UNDERTAKINGS_PATHS.map((pathParts) => {
       const pathKey = pathParts.join('|');
       return onSnapshot(
         query(collection(db, ...pathParts)),
         (snap) => {
-          employeeSnapshots[pathKey] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          employeeSnapshots[pathKey] = snap.docs.map((d) => normalizeEmployee({ id: d.id, ...d.data() }));
           setEmployees(flattenAndMerge(employeeSnapshots, 'employees'));
           if (!hasResolvedInitialLoad) {
             hasResolvedInitialLoad = true;
@@ -201,11 +222,10 @@ const App = () => {
     });
 
     return () => {
-      unsubAuth();
       employeeUnsubs.forEach((unsubscribe) => unsubscribe());
       auditUnsubs.forEach((unsubscribe) => unsubscribe());
     };
-  }, []);
+  }, [adminUser]);
 
   const stats = useMemo(() => {
     const total = employees.length;
@@ -231,8 +251,9 @@ const App = () => {
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
-      const matchesSearch = emp.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(searchTerm.toLowerCase());
+      const safeEmail = (emp.email || '').toLowerCase();
+      const safeName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+      const matchesSearch = safeEmail.includes(searchTerm.toLowerCase()) || safeName.includes(searchTerm.toLowerCase());
       const matchesDept = filterDept === 'all' || emp.department === filterDept;
       const matchesStatus = filterStatus === 'all' || 
                            (filterStatus === 'compliant' && emp.undertakingReceived) ||
@@ -341,7 +362,11 @@ const App = () => {
           const department = getCellValue(row, ['Department', 'department']);
           const phone = getCellValue(row, ['Phone', 'Phone Number', 'phone']);
           const position = getCellValue(row, ['Position', 'position', 'Designation']);
-          const status = getCellValue(row, ['Status', 'status']).toLowerCase();
+          const status = getCellValue(row, ['Status', 'status', 'Undertaking Status']).toLowerCase();
+          const undertakingRaw = getCellValue(row, ['undertakingReceived', 'Undertaking Received', 'Compliant']);
+          const undertakingReceived = undertakingRaw
+            ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
+            : ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(status);
 
           return {
             firstName,
@@ -350,7 +375,7 @@ const App = () => {
             department,
             phone,
             position,
-            undertakingReceived: ['accepted', 'compliant', 'yes', 'true', '1'].includes(status),
+            undertakingReceived,
           };
         })
         .filter((row) => row.email);
