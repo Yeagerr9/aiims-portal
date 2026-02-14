@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, deleteDoc, 
-  onSnapshot, query, addDoc, orderBy, writeBatch
+  onSnapshot, query, addDoc, orderBy, writeBatch, collectionGroup
 } from 'firebase/firestore';
 import { 
   LayoutDashboard, List, Building2, History, Search, Plus, 
@@ -45,6 +45,8 @@ const AUDIT_LOGS_PATHS = [
   ['organization_data', ORG_ID, 'audit_logs'],
   ['audit_logs'],
 ];
+const UNDERTAKINGS_GROUP = 'undertakings';
+const AUDIT_LOGS_GROUP = 'audit_logs';
 
 // --- Enhanced Shared UI Components ---
 const StatusBadge = ({ status }) => {
@@ -172,10 +174,14 @@ const App = () => {
 
       if (pathWithMostRecords) {
         const parsedPath = pathWithMostRecords.split('|');
-        if (type === 'employees') {
-          setActiveUndertakingsPath(parsedPath);
-        } else {
-          setActiveAuditLogsPath(parsedPath);
+        const isWritableCollectionPath = parsedPath.length % 2 === 1 && parsedPath[0] !== 'group';
+
+        if (isWritableCollectionPath) {
+          if (type === 'employees') {
+            setActiveUndertakingsPath(parsedPath);
+          } else {
+            setActiveAuditLogsPath(parsedPath);
+          }
         }
       }
 
@@ -187,7 +193,7 @@ const App = () => {
       return onSnapshot(
         query(collection(db, ...pathParts)),
         (snap) => {
-          employeeSnapshots[pathKey] = snap.docs.map((d) => normalizeEmployee({ id: d.id, ...d.data() }));
+          employeeSnapshots[pathKey] = snap.docs.map((d) => normalizeEmployee({ id: d.id, ...d.data(), __collectionPath: pathKey }));
           setEmployees(flattenAndMerge(employeeSnapshots, 'employees'));
           if (!hasResolvedInitialLoad) {
             hasResolvedInitialLoad = true;
@@ -209,7 +215,7 @@ const App = () => {
       return onSnapshot(
         query(collection(db, ...pathParts), orderBy('timestamp', 'desc')),
         (snap) => {
-          auditSnapshots[pathKey] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          auditSnapshots[pathKey] = snap.docs.map((d) => ({ id: d.id, ...d.data(), __collectionPath: pathKey }));
           const mergedLogs = flattenAndMerge(auditSnapshots, 'audit').sort(
             (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
           );
@@ -221,9 +227,48 @@ const App = () => {
       );
     });
 
+    const groupEmployeeUnsub = onSnapshot(
+      query(collectionGroup(db, UNDERTAKINGS_GROUP)),
+      (snap) => {
+        const key = `group|${UNDERTAKINGS_GROUP}`;
+        employeeSnapshots[key] = snap.docs
+          .filter((d) => d.ref.path.includes(`/${ORG_ID}/`))
+          .map((d) => normalizeEmployee({ id: d.id, ...d.data(), __collectionPath: d.ref.parent.path.split('/').join('|') }));
+
+        setEmployees(flattenAndMerge(employeeSnapshots, 'employees'));
+        if (!hasResolvedInitialLoad) {
+          hasResolvedInitialLoad = true;
+          setIsLoadingData(false);
+        }
+      },
+      (error) => {
+        console.error('Unable to read undertakings via collectionGroup:', error);
+      }
+    );
+
+    const groupAuditUnsub = onSnapshot(
+      query(collectionGroup(db, AUDIT_LOGS_GROUP), orderBy('timestamp', 'desc')),
+      (snap) => {
+        const key = `group|${AUDIT_LOGS_GROUP}`;
+        auditSnapshots[key] = snap.docs
+          .filter((d) => d.ref.path.includes(`/${ORG_ID}/`))
+          .map((d) => ({ id: d.id, ...d.data(), __collectionPath: d.ref.parent.path.split('/').join('|') }));
+
+        const mergedLogs = flattenAndMerge(auditSnapshots, 'audit').sort(
+          (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+        );
+        setAuditLogs(mergedLogs);
+      },
+      (error) => {
+        console.error('Unable to read audit logs via collectionGroup:', error);
+      }
+    );
+
     return () => {
       employeeUnsubs.forEach((unsubscribe) => unsubscribe());
       auditUnsubs.forEach((unsubscribe) => unsubscribe());
+      groupEmployeeUnsub();
+      groupAuditUnsub();
     };
   }, [adminUser]);
 
