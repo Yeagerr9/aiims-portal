@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import './index.css';
 import Confetti from 'react-confetti'; 
 import * as XLSX from 'xlsx'; 
@@ -6,11 +6,11 @@ import aiimsLogo from './assets/logo.png';
 
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, deleteDoc, 
-  onSnapshot, query, addDoc, orderBy, writeBatch, updateDoc
+  onSnapshot, query, addDoc, orderBy, writeBatch, collectionGroup
 } from 'firebase/firestore';
 import { 
   LayoutDashboard, List, Building2, History, Search, Plus, 
@@ -33,8 +33,20 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'aiims-default'; 
+const APP_ID_CANDIDATES = Array.from(new Set(['aiims-default', window.__app_id].filter(Boolean)));
 const ORG_ID = "aiims_raipur_main_db"; 
+const UNDERTAKINGS_PATHS = [
+  ...APP_ID_CANDIDATES.map((id) => ['artifacts', id, 'organization_data', ORG_ID, 'undertakings']),
+  ['organization_data', ORG_ID, 'undertakings'],
+  ['undertakings'],
+];
+const AUDIT_LOGS_PATHS = [
+  ...APP_ID_CANDIDATES.map((id) => ['artifacts', id, 'organization_data', ORG_ID, 'audit_logs']),
+  ['organization_data', ORG_ID, 'audit_logs'],
+  ['audit_logs'],
+];
+const UNDERTAKINGS_GROUP = 'undertakings';
+const AUDIT_LOGS_GROUP = 'audit_logs';
 
 // --- Enhanced Shared UI Components ---
 const StatusBadge = ({ status }) => {
@@ -53,7 +65,8 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const StatCard = ({ icon: Icon, label, value, trend, darkMode }) => {
+const StatCard = ({ icon, label, value, trend, darkMode }) => {
+  const IconComponent = icon;
   const cardClass = darkMode 
     ? "bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700" 
     : "bg-gradient-to-br from-white to-slate-50 border-slate-200 shadow-sm";
@@ -62,7 +75,7 @@ const StatCard = ({ icon: Icon, label, value, trend, darkMode }) => {
     <div className={`p-6 rounded-2xl border ${cardClass} group hover:scale-[1.02] transition-all duration-300`}>
       <div className="flex items-start justify-between mb-4">
         <div className={`p-3 rounded-xl ${darkMode ? 'bg-blue-500/10' : 'bg-blue-500/5'}`}>
-          <Icon className="w-5 h-5 text-blue-600" />
+          <IconComponent className="w-5 h-5 text-blue-600" />
         </div>
         {trend && (
           <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
@@ -83,7 +96,7 @@ const App = () => {
   const [adminUser, setAdminUser] = useState(null); 
   const [darkMode, setDarkMode] = useState(true); 
   const [activeView, setActiveView] = useState('dashboard');
-  const [loading, setLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [employees, setEmployees] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,7 +105,12 @@ const App = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [passwordResetMessage, setPasswordResetMessage] = useState('');
+  const [activeUndertakingsPath, setActiveUndertakingsPath] = useState(UNDERTAKINGS_PATHS[0]);
+  const [activeAuditLogsPath, setActiveAuditLogsPath] = useState(AUDIT_LOGS_PATHS[0]);
   const [showConfetti, setShowConfetti] = useState(false);
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({ 
     firstName: '', 
     lastName: '', 
@@ -100,7 +118,8 @@ const App = () => {
     department: '', 
     phone: '',
     position: '',
-    undertakingReceived: false 
+    undertakingReceived: false,
+    undertakingEmailSent: false 
   });
 
   // Theme Constants
@@ -113,27 +132,148 @@ const App = () => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       setAdminUser(user && !user.isAnonymous ? user : null);
     });
-    
-    const unsubEmp = onSnapshot(
-      query(collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings')), 
-      (snap) => {
-        setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      }
-    );
 
-    const unsubLogs = onSnapshot(
-      query(
-        collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'), 
-        orderBy('timestamp', 'desc')
-      ), 
-      (snap) => {
-        setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
-    );
-
-    return () => { unsubAuth(); unsubEmp(); unsubLogs(); };
+    return () => unsubAuth();
   }, []);
+
+  useEffect(() => {
+    if (!adminUser) {
+      setEmployees([]);
+      setAuditLogs([]);
+      setIsLoadingData(false);
+      return undefined;
+    }
+
+    setIsLoadingData(true);
+    const employeeSnapshots = {};
+    const auditSnapshots = {};
+    let hasResolvedInitialLoad = false;
+
+    const normalizeEmployee = (item) => {
+      const status = String(item.status || '').toLowerCase();
+      const statusImpliesUndertaking = ['accepted', 'compliant', 'done', 'verified', 'yes', 'true', '1'].includes(status);
+      const statusImpliesNotification = ['notified', 'sent', 'mailed', 'email sent'].includes(status);
+      return {
+        ...item,
+        undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
+        undertakingEmailSent: item.undertakingEmailSent ?? item.emailSent ?? statusImpliesNotification,
+      };
+    };
+
+    const flattenAndMerge = (snapshotMap, type) => {
+      const merged = new Map();
+
+      Object.entries(snapshotMap).forEach(([pathKey, docs]) => {
+        docs.forEach((item) => {
+          const dedupeKey = item.email || item.id;
+          if (!merged.has(dedupeKey)) {
+            merged.set(dedupeKey, { ...item, sourcePath: pathKey });
+          }
+        });
+      });
+
+      const pathWithMostRecords = Object.entries(snapshotMap)
+        .sort((a, b) => b[1].length - a[1].length)?.[0]?.[0];
+
+      if (pathWithMostRecords) {
+        const parsedPath = pathWithMostRecords.split('|');
+        const isWritableCollectionPath = parsedPath.length % 2 === 1 && parsedPath[0] !== 'group';
+
+        if (isWritableCollectionPath) {
+          if (type === 'employees') {
+            setActiveUndertakingsPath(parsedPath);
+          } else {
+            setActiveAuditLogsPath(parsedPath);
+          }
+        }
+      }
+
+      return Array.from(merged.values());
+    };
+
+    const employeeUnsubs = UNDERTAKINGS_PATHS.map((pathParts) => {
+      const pathKey = pathParts.join('|');
+      return onSnapshot(
+        query(collection(db, ...pathParts)),
+        (snap) => {
+          employeeSnapshots[pathKey] = snap.docs.map((d) => normalizeEmployee({ id: d.id, ...d.data(), __collectionPath: pathKey }));
+          setEmployees(flattenAndMerge(employeeSnapshots, 'employees'));
+          if (!hasResolvedInitialLoad) {
+            hasResolvedInitialLoad = true;
+            setIsLoadingData(false);
+          }
+        },
+        (error) => {
+          console.error(`Unable to read employees from ${pathParts.join('/')}:`, error);
+          if (!hasResolvedInitialLoad) {
+            hasResolvedInitialLoad = true;
+            setIsLoadingData(false);
+          }
+        }
+      );
+    });
+
+    const auditUnsubs = AUDIT_LOGS_PATHS.map((pathParts) => {
+      const pathKey = pathParts.join('|');
+      return onSnapshot(
+        query(collection(db, ...pathParts), orderBy('timestamp', 'desc')),
+        (snap) => {
+          auditSnapshots[pathKey] = snap.docs.map((d) => ({ id: d.id, ...d.data(), __collectionPath: pathKey }));
+          const mergedLogs = flattenAndMerge(auditSnapshots, 'audit').sort(
+            (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+          );
+          setAuditLogs(mergedLogs);
+        },
+        (error) => {
+          console.error(`Unable to read audit logs from ${pathParts.join('/')}:`, error);
+        }
+      );
+    });
+
+    const groupEmployeeUnsub = onSnapshot(
+      query(collectionGroup(db, UNDERTAKINGS_GROUP)),
+      (snap) => {
+        const key = `group|${UNDERTAKINGS_GROUP}`;
+        employeeSnapshots[key] = snap.docs
+          .filter((d) => d.ref.path.includes(`/${ORG_ID}/`))
+          .map((d) => normalizeEmployee({ id: d.id, ...d.data(), __collectionPath: d.ref.parent.path.split('/').join('|') }));
+
+        setEmployees(flattenAndMerge(employeeSnapshots, 'employees'));
+        if (!hasResolvedInitialLoad) {
+          hasResolvedInitialLoad = true;
+          setIsLoadingData(false);
+        }
+      },
+      (error) => {
+        console.error('Unable to read undertakings via collectionGroup:', error);
+      }
+    );
+
+    const groupAuditUnsub = onSnapshot(
+      query(collectionGroup(db, AUDIT_LOGS_GROUP), orderBy('timestamp', 'desc')),
+      (snap) => {
+        const key = `group|${AUDIT_LOGS_GROUP}`;
+        auditSnapshots[key] = snap.docs
+          .filter((d) => d.ref.path.includes(`/${ORG_ID}/`))
+          .map((d) => ({ id: d.id, ...d.data(), __collectionPath: d.ref.parent.path.split('/').join('|') }));
+
+        const mergedLogs = flattenAndMerge(auditSnapshots, 'audit').sort(
+          (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+        );
+        setAuditLogs(mergedLogs);
+      },
+      (error) => {
+        console.error('Unable to read audit logs via collectionGroup:', error);
+      }
+    );
+
+    return () => {
+      employeeUnsubs.forEach((unsubscribe) => unsubscribe());
+      auditUnsubs.forEach((unsubscribe) => unsubscribe());
+      groupEmployeeUnsub();
+      groupAuditUnsub();
+    };
+  }, [adminUser]);
 
   const stats = useMemo(() => {
     const total = employees.length;
@@ -159,8 +299,9 @@ const App = () => {
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
-      const matchesSearch = emp.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(searchTerm.toLowerCase());
+      const safeEmail = (emp.email || '').toLowerCase();
+      const safeName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+      const matchesSearch = safeEmail.includes(searchTerm.toLowerCase()) || safeName.includes(searchTerm.toLowerCase());
       const matchesDept = filterDept === 'all' || emp.department === filterDept;
       const matchesStatus = filterStatus === 'all' || 
                            (filterStatus === 'compliant' && emp.undertakingReceived) ||
@@ -174,10 +315,11 @@ const App = () => {
     const isNew = !employees.find(emp => emp.email === formData.email);
     
     await setDoc(
-      doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', formData.email), 
+      doc(db, ...activeUndertakingsPath, formData.email), 
       {
         ...formData, 
-        status: formData.undertakingReceived ? 'Accepted' : 'Pending', 
+        status: formData.undertakingReceived ? 'Accepted' : 'Pending',
+        undertakingEmailSent: !!formData.undertakingEmailSent,
         updatedAt: new Date().toISOString()
       }, 
       { merge: true }
@@ -185,7 +327,7 @@ const App = () => {
 
     // Add audit log
     await addDoc(
-      collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'),
+      collection(db, ...activeAuditLogsPath),
       {
         action: isNew ? 'Created' : 'Updated',
         details: `${isNew ? 'Added' : 'Updated'} record for ${formData.firstName} ${formData.lastName}`,
@@ -195,7 +337,7 @@ const App = () => {
     );
 
     setIsAddModalOpen(false);
-    setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false });
+    setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false, undertakingEmailSent: false });
     
     if (formData.undertakingReceived && isNew) {
       setShowConfetti(true);
@@ -205,10 +347,10 @@ const App = () => {
 
   const handleDelete = async (empId, empName) => {
     if (window.confirm(`Are you sure you want to delete ${empName}?`)) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'organization_data', ORG_ID, 'undertakings', empId));
+      await deleteDoc(doc(db, ...activeUndertakingsPath, empId));
       
       await addDoc(
-        collection(db, 'artifacts', appId, 'organization_data', ORG_ID, 'audit_logs'),
+        collection(db, ...activeAuditLogsPath),
         {
           action: 'Deleted',
           details: `Removed record for ${empName}`,
@@ -228,6 +370,7 @@ const App = () => {
       'Phone': emp.phone || 'N/A',
       'Position': emp.position || 'N/A',
       'Status': emp.undertakingReceived ? 'Compliant' : 'Pending',
+      'Undertaking Email Sent': emp.undertakingEmailSent ? 'Sent' : 'Pending',
       'Updated': emp.updatedAt ? new Date(emp.updatedAt).toLocaleDateString() : 'N/A'
     }));
 
@@ -235,6 +378,117 @@ const App = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Staff Records');
     XLSX.writeFile(wb, `AIIMS_Staff_Records_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleImportExcel = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const getCellValue = (row, labels) => {
+      for (const label of labels) {
+        if (row[label] !== undefined && row[label] !== null && String(row[label]).trim() !== '') {
+          return String(row[label]).trim();
+        }
+      }
+      return '';
+    };
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+      if (!rows.length) {
+        alert('The selected Excel sheet is empty.');
+        return;
+      }
+
+      const normalized = rows
+        .map((row) => {
+          const firstName = getCellValue(row, ['First Name', 'FirstName', 'firstName']);
+          const lastName = getCellValue(row, ['Last Name', 'LastName', 'lastName']);
+          const email = getCellValue(row, ['Email', 'email', 'Email Address']);
+          const department = getCellValue(row, ['Department', 'department']);
+          const phone = getCellValue(row, ['Phone', 'Phone Number', 'phone']);
+          const position = getCellValue(row, ['Position', 'position', 'Designation']);
+          const status = getCellValue(row, ['Status', 'status', 'Undertaking Status']).toLowerCase();
+          const undertakingRaw = getCellValue(row, ['undertakingReceived', 'Undertaking Received', 'Compliant']);
+          const emailSentRaw = getCellValue(row, ['Undertaking Email Sent', 'undertakingEmailSent', 'Email Sent', 'Notification Sent']);
+          const undertakingReceived = undertakingRaw
+            ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
+            : ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(status);
+          const undertakingEmailSent = emailSentRaw
+            ? ['sent', 'notified', 'yes', 'true', '1', 'mailed'].includes(emailSentRaw.toLowerCase())
+            : ['notified', 'sent', 'mailed', 'email sent'].includes(status);
+
+          return {
+            firstName,
+            lastName,
+            email: email.toLowerCase(),
+            department,
+            phone,
+            position,
+            undertakingReceived,
+            undertakingEmailSent,
+          };
+        })
+        .filter((row) => row.email);
+
+      if (!normalized.length) {
+        alert('No valid rows found. Make sure the Excel file has an Email column.');
+        return;
+      }
+
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      normalized.forEach((entry) => {
+        batch.set(
+          doc(db, ...activeUndertakingsPath, entry.email),
+          {
+            ...entry,
+            status: entry.undertakingReceived ? 'Accepted' : 'Pending',
+            undertakingEmailSent: !!entry.undertakingEmailSent,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+
+      await addDoc(collection(db, ...activeAuditLogsPath), {
+        action: 'Imported',
+        details: `Imported ${normalized.length} staff record(s) from Excel`,
+        timestamp: now,
+        user: adminUser?.email || 'System',
+      });
+
+      alert(`Successfully imported ${normalized.length} staff record(s).`);
+    } catch (error) {
+      console.error('Excel import failed:', error);
+      alert(`Excel import failed: ${error.message}`);
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setLoginError('');
+    setPasswordResetMessage('');
+
+    if (!loginEmail.trim()) {
+      setLoginError('Please enter your email first, then click "Forgot password".');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, loginEmail.trim());
+      setPasswordResetMessage('Password reset email sent. Please check your inbox/spam folder.');
+    } catch (error) {
+      setLoginError(`Unable to send reset email: ${error.message}`);
+    }
   };
 
   if (!adminUser) {
@@ -260,9 +514,11 @@ const App = () => {
           <form onSubmit={async (e) => { 
             e.preventDefault(); 
             try {
+              setLoginError('');
+              setPasswordResetMessage('');
               await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
             } catch (error) {
-              alert('Login failed: ' + error.message);
+              setLoginError('Login failed: ' + error.message);
             }
           }} className="space-y-4">
             <div>
@@ -290,12 +546,29 @@ const App = () => {
             <button className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-blue-600/30 transition-all duration-300 hover:scale-[1.02]">
               Sign In Securely
             </button>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="w-full text-sm text-blue-600 hover:text-blue-500 font-semibold"
+            >
+              Forgot password?
+            </button>
+            {loginError && <p className="text-sm text-red-500">{loginError}</p>}
+            {passwordResetMessage && <p className="text-sm text-emerald-500">{passwordResetMessage}</p>}
           </form>
 
           <div className="mt-6 text-center text-xs opacity-40">
             <p>© 2025 AIIMS Raipur. All rights reserved.</p>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (isLoadingData) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${bgClass}`}>
+        <p className="text-sm opacity-60">Loading staff records...</p>
       </div>
     );
   }
@@ -391,13 +664,29 @@ const App = () => {
           </div>
           <div className="flex items-center gap-3">
             {activeView === 'registry' && (
-              <button
-                onClick={exportToExcel}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all hover:scale-[1.02]"
-              >
-                <Download className="w-4 h-4" />
-                Export Data
-              </button>
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleImportExcel}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all hover:scale-[1.02]"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Excel
+                </button>
+                <button
+                  onClick={exportToExcel}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all hover:scale-[1.02]"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Data
+                </button>
+              </>
             )}
           </div>
         </header>
@@ -587,7 +876,7 @@ const App = () => {
                     </select>
                     <button 
                       onClick={() => {
-                        setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false });
+                        setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false, undertakingEmailSent: false });
                         setIsAddModalOpen(true);
                       }} 
                       className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-blue-600/30 transition-all hover:scale-[1.02] flex items-center gap-2"
@@ -609,7 +898,8 @@ const App = () => {
                         <th className="p-4 opacity-60">Staff Member</th>
                         <th className="p-4 opacity-60">Contact</th>
                         <th className="p-4 opacity-60">Department</th>
-                        <th className="p-4 opacity-60 text-center">Status</th>
+                        <th className="p-4 opacity-60 text-center">Undertaking Status</th>
+                        <th className="p-4 opacity-60 text-center">Email Notification</th>
                         <th className="p-4 opacity-60">Last Updated</th>
                         <th className="p-4 opacity-60 text-right">Actions</th>
                       </tr>
@@ -652,6 +942,9 @@ const App = () => {
                           <td className="p-4 text-center">
                             <StatusBadge status={emp.undertakingReceived ? 'Accepted' : 'Pending'} />
                           </td>
+                          <td className="p-4 text-center">
+                            <StatusBadge status={emp.undertakingEmailSent ? 'Notified' : 'Pending'} />
+                          </td>
                           <td className="p-4 text-xs opacity-60">
                             {emp.updatedAt ? new Date(emp.updatedAt).toLocaleDateString() : 'N/A'}
                           </td>
@@ -659,7 +952,7 @@ const App = () => {
                             <div className="flex items-center justify-end gap-2">
                               <button 
                                 onClick={() => { 
-                                  setFormData(emp); 
+                                  setFormData({ ...emp, undertakingReceived: !!emp.undertakingReceived, undertakingEmailSent: !!emp.undertakingEmailSent }); 
                                   setIsAddModalOpen(true); 
                                 }} 
                                 className="p-2 text-blue-600 hover:bg-blue-500/10 rounded-lg transition-all"
@@ -868,6 +1161,19 @@ const App = () => {
                 />
                 <label htmlFor="undertaking" className="text-sm font-medium cursor-pointer">
                   Undertaking Document Received and Verified
+                </label>
+              </div>
+
+              <div className={`flex items-center gap-3 p-4 rounded-xl border ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
+                <input 
+                  type="checkbox" 
+                  id="undertakingEmailSent"
+                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-600"
+                  checked={!!formData.undertakingEmailSent}
+                  onChange={e => setFormData({ ...formData, undertakingEmailSent: e.target.checked })}
+                />
+                <label htmlFor="undertakingEmailSent" className="text-sm font-medium cursor-pointer">
+                  Undertaking Notification Email Sent
                 </label>
               </div>
 
