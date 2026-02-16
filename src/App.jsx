@@ -118,7 +118,8 @@ const App = () => {
     department: '', 
     phone: '',
     position: '',
-    undertakingReceived: false 
+    undertakingReceived: false,
+    undertakingEmailSent: false 
   });
 
   // Theme Constants
@@ -151,9 +152,17 @@ const App = () => {
     const normalizeEmployee = (item) => {
       const status = String(item.status || '').toLowerCase();
       const statusImpliesUndertaking = ['accepted', 'compliant', 'done', 'verified', 'yes', 'true', '1'].includes(status);
+codex/fix-portal-errors-r7aajf
+      const statusImpliesNotification = ['notified', 'sent', 'mailed', 'email sent'].includes(status);
       return {
         ...item,
         undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
+        undertakingEmailSent: item.undertakingEmailSent ?? item.emailSent ?? statusImpliesNotification,
+
+      return {
+        ...item,
+        undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
+ main
       };
     };
 
@@ -315,7 +324,8 @@ const App = () => {
       doc(db, ...activeUndertakingsPath, formData.email), 
       {
         ...formData, 
-        status: formData.undertakingReceived ? 'Accepted' : 'Pending', 
+        status: formData.undertakingReceived ? 'Accepted' : 'Pending',
+        undertakingEmailSent: !!formData.undertakingEmailSent,
         updatedAt: new Date().toISOString()
       }, 
       { merge: true }
@@ -333,7 +343,7 @@ const App = () => {
     );
 
     setIsAddModalOpen(false);
-    setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false });
+    setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false, undertakingEmailSent: false });
     
     if (formData.undertakingReceived && isNew) {
       setShowConfetti(true);
@@ -366,6 +376,7 @@ const App = () => {
       'Phone': emp.phone || 'N/A',
       'Position': emp.position || 'N/A',
       'Status': emp.undertakingReceived ? 'Compliant' : 'Pending',
+      'Undertaking Email Sent': emp.undertakingEmailSent ? 'Sent' : 'Pending',
       'Updated': emp.updatedAt ? new Date(emp.updatedAt).toLocaleDateString() : 'N/A'
     }));
 
@@ -409,9 +420,19 @@ const App = () => {
           const position = getCellValue(row, ['Position', 'position', 'Designation']);
           const status = getCellValue(row, ['Status', 'status', 'Undertaking Status']).toLowerCase();
           const undertakingRaw = getCellValue(row, ['undertakingReceived', 'Undertaking Received', 'Compliant']);
+codex/fix-portal-errors-r7aajf
+          const emailSentRaw = getCellValue(row, ['Undertaking Email Sent', 'undertakingEmailSent', 'Email Sent', 'Notification Sent']);
           const undertakingReceived = undertakingRaw
             ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
             : ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(status);
+          const undertakingEmailSent = emailSentRaw
+            ? ['sent', 'notified', 'yes', 'true', '1', 'mailed'].includes(emailSentRaw.toLowerCase())
+            : ['notified', 'sent', 'mailed', 'email sent'].includes(status);
+
+          const undertakingReceived = undertakingRaw
+            ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
+            : ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(status);
+ main
 
           return {
             firstName,
@@ -421,6 +442,10 @@ const App = () => {
             phone,
             position,
             undertakingReceived,
+ codex/fix-portal-errors-r7aajf
+            undertakingEmailSent,
+
+ main
           };
         })
         .filter((row) => row.email);
@@ -439,6 +464,10 @@ const App = () => {
           {
             ...entry,
             status: entry.undertakingReceived ? 'Accepted' : 'Pending',
+ codex/fix-portal-errors-r7aajf
+            undertakingEmailSent: !!entry.undertakingEmailSent,
+
+ main
             updatedAt: now,
           },
           { merge: true }
@@ -865,7 +894,7 @@ const App = () => {
                     </select>
                     <button 
                       onClick={() => {
-                        setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false });
+                        setFormData({ firstName: '', lastName: '', email: '', department: '', phone: '', position: '', undertakingReceived: false, undertakingEmailSent: false });
                         setIsAddModalOpen(true);
                       }} 
                       className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-blue-600/30 transition-all hover:scale-[1.02] flex items-center gap-2"
@@ -887,7 +916,8 @@ const App = () => {
                         <th className="p-4 opacity-60">Staff Member</th>
                         <th className="p-4 opacity-60">Contact</th>
                         <th className="p-4 opacity-60">Department</th>
-                        <th className="p-4 opacity-60 text-center">Status</th>
+                        <th className="p-4 opacity-60 text-center">Undertaking Status</th>
+                        <th className="p-4 opacity-60 text-center">Email Notification</th>
                         <th className="p-4 opacity-60">Last Updated</th>
                         <th className="p-4 opacity-60 text-right">Actions</th>
                       </tr>
@@ -930,6 +960,9 @@ const App = () => {
                           <td className="p-4 text-center">
                             <StatusBadge status={emp.undertakingReceived ? 'Accepted' : 'Pending'} />
                           </td>
+                          <td className="p-4 text-center">
+                            <StatusBadge status={emp.undertakingEmailSent ? 'Notified' : 'Pending'} />
+                          </td>
                           <td className="p-4 text-xs opacity-60">
                             {emp.updatedAt ? new Date(emp.updatedAt).toLocaleDateString() : 'N/A'}
                           </td>
@@ -937,7 +970,7 @@ const App = () => {
                             <div className="flex items-center justify-end gap-2">
                               <button 
                                 onClick={() => { 
-                                  setFormData(emp); 
+                                  setFormData({ ...emp, undertakingReceived: !!emp.undertakingReceived, undertakingEmailSent: !!emp.undertakingEmailSent }); 
                                   setIsAddModalOpen(true); 
                                 }} 
                                 className="p-2 text-blue-600 hover:bg-blue-500/10 rounded-lg transition-all"
@@ -1146,6 +1179,19 @@ const App = () => {
                 />
                 <label htmlFor="undertaking" className="text-sm font-medium cursor-pointer">
                   Undertaking Document Received and Verified
+                </label>
+              </div>
+
+              <div className={`flex items-center gap-3 p-4 rounded-xl border ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
+                <input 
+                  type="checkbox" 
+                  id="undertakingEmailSent"
+                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-600"
+                  checked={!!formData.undertakingEmailSent}
+                  onChange={e => setFormData({ ...formData, undertakingEmailSent: e.target.checked })}
+                />
+                <label htmlFor="undertakingEmailSent" className="text-sm font-medium cursor-pointer">
+                  Undertaking Notification Email Sent
                 </label>
               </div>
 
