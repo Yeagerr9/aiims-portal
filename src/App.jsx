@@ -152,11 +152,17 @@ const App = () => {
     const normalizeEmployee = (item) => {
       const status = String(item.status || '').toLowerCase();
       const statusImpliesUndertaking = ['accepted', 'compliant', 'done', 'verified', 'yes', 'true', '1'].includes(status);
+codex/fix-portal-errors-r7aajf
       const statusImpliesNotification = ['notified', 'sent', 'mailed', 'email sent'].includes(status);
       return {
         ...item,
         undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
         undertakingEmailSent: item.undertakingEmailSent ?? item.emailSent ?? statusImpliesNotification,
+
+      return {
+        ...item,
+        undertakingReceived: item.undertakingReceived ?? statusImpliesUndertaking,
+ main
       };
     };
 
@@ -414,6 +420,7 @@ const App = () => {
           const position = getCellValue(row, ['Position', 'position', 'Designation']);
           const status = getCellValue(row, ['Status', 'status', 'Undertaking Status']).toLowerCase();
           const undertakingRaw = getCellValue(row, ['undertakingReceived', 'Undertaking Received', 'Compliant']);
+codex/fix-portal-errors-r7aajf
           const emailSentRaw = getCellValue(row, ['Undertaking Email Sent', 'undertakingEmailSent', 'Email Sent', 'Notification Sent']);
           const undertakingReceived = undertakingRaw
             ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
@@ -421,6 +428,11 @@ const App = () => {
           const undertakingEmailSent = emailSentRaw
             ? ['sent', 'notified', 'yes', 'true', '1', 'mailed'].includes(emailSentRaw.toLowerCase())
             : ['notified', 'sent', 'mailed', 'email sent'].includes(status);
+
+          const undertakingReceived = undertakingRaw
+            ? ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(undertakingRaw.toLowerCase())
+            : ['accepted', 'compliant', 'yes', 'true', '1', 'verified'].includes(status);
+ main
 
           return {
             firstName,
@@ -430,7 +442,10 @@ const App = () => {
             phone,
             position,
             undertakingReceived,
+ codex/fix-portal-errors-r7aajf
             undertakingEmailSent,
+
+ main
           };
         })
         .filter((row) => row.email);
@@ -449,7 +464,10 @@ const App = () => {
           {
             ...entry,
             status: entry.undertakingReceived ? 'Accepted' : 'Pending',
+ codex/fix-portal-errors-r7aajf
             undertakingEmailSent: !!entry.undertakingEmailSent,
+
+ main
             updatedAt: now,
           },
           { merge: true }
